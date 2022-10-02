@@ -62,21 +62,29 @@ def tokenize(source: str) -> Iterator[TokenInfo]:
 
 
 def insert_inplace(
-    tokens: list[TokenInfo],
+    toks: list[TokenInfo],
     index: int,
     type: int,
     string: str,
     offset: int,
-    width: int,
     next_row: bool = False,
 ) -> None:
-    """Insert a token into a token stream, and shift all following tokens forward appropriately."""
-    previous = tokens[index - 1]
+    """Insert a token into a token stream, and shift all following tokens forward appropriately.
+
+    * index: index into token list
+    * type: token type (see `tokens` in the standard library)
+    * string: token string
+    * offset: offset from previous token
+    * next_row: whether to skip forward to the next row
+    """
+    previous = toks[index - 1]
     row, col = previous.end
     row = row + 1 if next_row else row
     col = offset if next_row else col + offset
-    tokens.insert(index, TokenInfo(type, string, (row, col), (row, col + width), ""))
-    offset_line_inplace(tokens, line=row, by=offset + width, starting=index + 1)
+    toks.insert(
+        index, TokenInfo(type, string, (row, col), (row, col + len(string)), "")
+    )
+    offset_line_inplace(toks, line=row, by=offset + len(string), starting=index + 1)
 
 
 class UnclosedParentheses(Exception):

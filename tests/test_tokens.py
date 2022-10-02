@@ -66,7 +66,7 @@ def test_offset_line_newlines():
 def test_insert_inplace_simple():
     toks = list(tokens.tokenize("1+"))
     expected = list(tokens.tokenize("1:+"))
-    tokens.insert_inplace(toks, 1, token.OP, ":", 0, 1, False)
+    tokens.insert_inplace(toks, 1, token.OP, ":", 0, False)
     assert len(toks) == len(expected), "different count"
     for l, r in zip(toks, expected):
         assert tokens.token_eq(l, r), f"{l} and {r} not equal"
@@ -75,7 +75,7 @@ def test_insert_inplace_simple():
 def test_insert_inplace_offset():
     toks = list(tokens.tokenize("1+"))
     expected = list(tokens.tokenize("1+ :"))
-    tokens.insert_inplace(toks, 2, token.OP, ":", 1, 1, False)
+    tokens.insert_inplace(toks, 2, token.OP, ":", 1, False)
     assert len(toks) == len(expected), "different count"
     for l, r in zip(toks, expected):
         assert tokens.token_eq(l, r), f"{l} and {r} not equal"
@@ -84,7 +84,7 @@ def test_insert_inplace_offset():
 def test_insert_inplace_newline():
     toks = list(tokens.tokenize("1\n+"))
     expected = list(tokens.tokenize("1\n:+"))
-    tokens.insert_inplace(toks, 2, token.OP, ":", 0, 1, True)
+    tokens.insert_inplace(toks, 2, token.OP, ":", 0, True)
     assert len(toks) == len(expected), "different count"
     for l, r in zip(toks, expected):
         assert tokens.token_eq(l, r), f"{l} and {r} not equal"
