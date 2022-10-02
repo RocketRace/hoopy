@@ -14,7 +14,7 @@ from __future__ import annotations
         - Find consecutive gapless tokens that are formed of valid operator tokens
         - Store the spans of their arguments
             - Left end, right start
-        - Replace the tokens with a single operator token 
+        - Replace the tokens with a single operator token
             - Note that trailing prefix operators may be swallowed, a ++ b is not a + + b
             - Use some static rule to bucket results into 1 ~ 6 precedence levels
             - Possibly: multiplicative, additive, bitwise, arrows
@@ -35,7 +35,7 @@ from __future__ import annotations
             - If the child is Expr Constant with a string value, skip one (doc comment)
             - If the child is ImportFrom with module == "__future__", skip one (future import)
 
-Example input: 
+Example input:
 
     # coding: infix
     times = (*)
