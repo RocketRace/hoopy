@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-'''
+"""
 1. Token transformations
     a) Transform objectified operators
         - Find sequence of tokens in between parentheses that is a valid operator
@@ -58,20 +58,20 @@ Custom operator semantics:
         - Can be imported from other modules
             - Therefore must hold a reference to the module they were defined in?
 
-'''
+"""
 
-from infix import infix
+# from .infix import infix
 
-class Wrapper:
-    def __init__(self, wrapped):
-        self.wrapped = wrapped
+# class Wrapper:
+#     def __init__(self, wrapped):
+#         self.wrapped = wrapped
 
-    @infix("??")
-    def maybe(self, other: int) -> int | None:
-        'weee'
-        return None if self.wrapped is None else other
+#     @infix("??")
+#     def maybe(self, other: int) -> int | None:
+#         'weee'
+#         return None if self.wrapped is None else other
 
-print(Wrapper(1).maybe)
+# print(Wrapper(1).maybe)
 
 # print(__infix_operators__["??"](Wrapper(None), 123))
 # print(__infix_operators__["??"](None, 123))

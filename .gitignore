@@ -130,4 +130,6 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# Manually added entries
 .DS_Store
+.vscode/
