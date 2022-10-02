@@ -82,7 +82,9 @@ def insert_inplace(
     row = row + 1 if next_row else row
     col = offset if next_row else col + offset
     toks.insert(
-        index, TokenInfo(type, string, (row, col), (row, col + len(string)), "")
+        index,
+        # the line attribute is left blank here since it is not used anywhere
+        TokenInfo(type, string, (row, col), (row, col + len(string)), ""),
     )
     offset_line_inplace(toks, line=row, by=offset + len(string), starting=index + 1)
 
