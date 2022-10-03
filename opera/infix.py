@@ -11,6 +11,7 @@ from enum import IntEnum
 from types import ModuleType
 from typing import Any, Callable, Generic, Mapping, overload
 
+from .tokens import BLACKLISTED_OPERATOR_STRINGS
 from .magic import __operator__
 from .utils import Decorator, FunctionContext, T, U, V, context
 
@@ -214,7 +215,7 @@ def infix(
     ```
 
     """
-    if op in (".", "...", "=", ":=", ":", "::", "~"):
+    if op in BLACKLISTED_OPERATOR_STRINGS:
         raise ValueError(f"The operator '{op}' is not allowed")
 
         # TODO

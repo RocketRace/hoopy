@@ -3,11 +3,12 @@ Token transformations!
 """
 
 from __future__ import annotations
+import itertools
 
 import token
 from io import StringIO
-from tokenize import TokenInfo, generate_tokens
-from typing import Iterator
+from tokenize import TokenInfo, generate_tokens, untokenize
+from typing import Iterator, Sequence
 
 
 def offset(tok: TokenInfo, by: int) -> TokenInfo:
@@ -24,7 +25,7 @@ def offset_line_inplace(
 ) -> None:
     """Horizontally shift the spans of tokens in the given line right by `by` columns, mutating the list in-place.
 
-    The optional `start` parameter (default 0) determines the first token index to be considered.
+    The optional `starting` parameter (default 0) determines the first token index to be considered.
     """
     start = -1
     end = -1
@@ -61,6 +62,32 @@ def tokenize(source: str) -> Iterator[TokenInfo]:
     return generate_tokens(StringIO(source).readline)
 
 
+def remove_inplace(toks: list[TokenInfo], start: int, end: int | None = None) -> None:
+    """Remove some slice within this the token stream, and shift following tokens backward appropriately.
+
+    Endpoints are handled the same as with python slices.
+
+    If `end` is missing or None, it defaults to `start + 1`."""
+    if end is None:
+        end = start + 1
+
+    if end <= start:
+        return
+
+    s_row, s_col = toks[start].start
+    e_row, e_col = toks[end - 1].end
+
+    if s_row == e_row:
+        # this is negative (i.e. leftwards)
+        offset = s_col - e_col
+        toks[start:end] = []
+        offset_line_inplace(toks, line=s_row, by=offset, starting=start)
+    else:
+        raise ValueError(
+            "Removing tokens spanning across multiple lines not supported at the moment"
+        )
+
+
 def insert_inplace(
     toks: list[TokenInfo],
     index: int,
@@ -89,43 +116,80 @@ def insert_inplace(
     offset_line_inplace(toks, line=row, by=offset + len(string), starting=index + 1)
 
 
-class UnclosedParentheses(Exception):
-    """No matching parenthesis found.
+SYMBOL_TOKEN_STRINGS = set(token.EXACT_TOKEN_TYPES)
+for non_op in ",;()[]{}":
+    SYMBOL_TOKEN_STRINGS.remove(non_op)
+for extra_op in "$!?":
+    SYMBOL_TOKEN_STRINGS.add(extra_op)
 
-    depth: Number of unclosed parentheses (>= 1)
+KEYWORD_TOKEN_STRINGS = {"is", "not", "and", "or", "in"}
+
+BLACKLISTED_OPERATOR_STRINGS = {"...", ".", ":", "::", ":=", "=", "~"}
+
+
+def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
+    """Returns the mangled representation of a token, or None if the tokens
+    don't constitute a valid operator.
+
+    Reasons for failure include:
+
+    * Disallowed token types (`$2$` is invalid, `$.$` is valid)
+    * Spaces between non-keyword tokens (`+ +` is invalid, `is not` is valid)
+    * Specifically blacklisted tokens (`:=` is invalid, `:=:` is valid)
     """
+    if not toks:
+        return None
 
-    def __init__(self, depth: int):
-        self.depth = depth
+    # TODO: handle keyword operators in a cleaner way
+    # This matches:
+    # * not
+    # * and
+    # * or
+    # * is
+    # * in
+    # * is not
+    # * not in
+    if (len(toks) == 1 and toks[0].string in KEYWORD_TOKEN_STRINGS) or (
+        len(toks) == 2
+        and (
+            (toks[0].string == "not" and toks[1].string == "in")
+            or (toks[0].string == "is" and toks[1].string == "not")
+        )
+    ):
+        op_string = " ".join(tok.string for tok in toks)
+
+    else:
+        end = None
+        operator: list[str] = []
+        for tok in toks:
+            if tok.string not in SYMBOL_TOKEN_STRINGS or (
+                end is not None and tok.start[1] != end
+            ):
+                return None
+            operator.append(tok.string)
+            end = tok.end[1]
+        op_string = "".join(operator)
+
+    if op_string in BLACKLISTED_OPERATOR_STRINGS:
+        return None
+    return f"__operator_{nonce}_{''.join(f'{ord(c):x}' for c in op_string)}"
 
 
-def find_matching_parentheses(tokens: list[TokenInfo], left: int) -> int:
-    """Returns the the index of right-paren paired with left-paren at the given index, or None if not found."""
-    depth = 1
-    for i, tok in enumerate(tokens[left + 1 :]):
-        if tok.type == token.RPAR:
-            depth -= 1
-        elif tok.type == token.LPAR:
-            depth += 1
-        if depth == 0:
-            return i
-    raise UnclosedParentheses(depth)
-
-
-def matches_objectification(tokens: list[TokenInfo]) -> bool:
-    """Tests against objectified patterns"""
-    return False
-
-
-def objectify_operators_inplace(tokens: list[TokenInfo]) -> None:
-    """Substitutes all instances of objectified operators (e.g. `(+)`)
-    with their desugared representations (e.g. `(__operator__(__name__, "+"))`).
-
-    Returns True if any substitutions were made, and False otherwise.
+def transform_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> None:
+    """Substitutes all instances of objectified operators (e.g. `(+%+)`)
+    with their hex representations, such as `(__operator_0f198f1a_2b252b)`
+    given the nonce `"0f198f1a"`.
     """
-    i = -1
-    while i < len(tokens):
-        i += 1
-        tok = tokens[i]
-        if tok == token.LPAR:
-            pass
+    start = None
+    operators: list[tuple[int, int, str]] = []
+    for i in range(len(toks)):
+        if toks[i].exact_type == token.LPAR:
+            start = i
+        if toks[i].exact_type == token.RPAR and start is not None:
+            mangled = mangle_operator_string(toks[start + 1 : i], nonce)
+            if mangled is not None:
+                operators.append((start + 1, i, mangled))
+            start = None
+    for start, end, mangled in reversed(operators):
+        remove_inplace(toks, start, end)
+        insert_inplace(toks, start, token.NAME, mangled, offset=0)
