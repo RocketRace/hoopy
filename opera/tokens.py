@@ -1,13 +1,12 @@
 """
-Token transformations!
+Token transformations and utility functions!
 """
 
 from __future__ import annotations
-import itertools
 
 import token
 from io import StringIO
-from tokenize import TokenInfo, generate_tokens, untokenize
+from tokenize import TokenInfo, generate_tokens
 from typing import Iterator, Sequence
 
 
@@ -93,7 +92,9 @@ def insert_inplace(
     index: int,
     type: int,
     string: str,
-    offset: int,
+    *,
+    left_offset: int = 0,
+    right_offset: int = 0,
     next_row: bool = False,
 ) -> None:
     """Insert a token into a token stream, and shift all following tokens forward appropriately.
@@ -101,19 +102,22 @@ def insert_inplace(
     * index: index into token list
     * type: token type (see `tokens` in the standard library)
     * string: token string
-    * offset: offset from previous token
+    * left_offset: offset from previous token
+    * right_offset: offset to next token
     * next_row: whether to skip forward to the next row
     """
     previous = toks[index - 1]
     row, col = previous.end
     row = row + 1 if next_row else row
-    col = offset if next_row else col + offset
+    col = left_offset if next_row else col + left_offset
     toks.insert(
         index,
         # the line attribute is left blank here since it is not used anywhere
         TokenInfo(type, string, (row, col), (row, col + len(string)), ""),
     )
-    offset_line_inplace(toks, line=row, by=offset + len(string), starting=index + 1)
+    offset_line_inplace(
+        toks, line=row, by=left_offset + len(string) + right_offset, starting=index + 1
+    )
 
 
 SYMBOL_TOKEN_STRINGS = set(token.EXACT_TOKEN_TYPES)
@@ -177,8 +181,10 @@ def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
 
 def transform_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> None:
     """Substitutes all instances of objectified operators (e.g. `(+%+)`)
-    with their hex representations, such as `(__operator_0f198f1a_2b252b)`
-    given the nonce `"0f198f1a"`.
+    with their hex representations, such as ` __operator_0f198f1a_2b252b `
+    given the nonce `"0f198f1a"`. Notice the extra spaces around the identifiers.
+    This is kept to ensure no tokens are accidentally joined together after this
+    transformation.
     """
     start = None
     operators: list[tuple[int, int, str]] = []
@@ -191,5 +197,7 @@ def transform_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> Non
                 operators.append((start + 1, i, mangled))
             start = None
     for start, end, mangled in reversed(operators):
-        remove_inplace(toks, start, end)
-        insert_inplace(toks, start, token.NAME, mangled, offset=0)
+        remove_inplace(toks, start - 1, end + 1)
+        insert_inplace(
+            toks, start - 1, token.NAME, mangled, left_offset=1, right_offset=1
+        )

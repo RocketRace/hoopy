@@ -66,16 +66,16 @@ def test_offset_line_newlines():
 def test_insert_inplace_simple():
     toks = list(tokens.tokenize("1+"))
     expected = list(tokens.tokenize("1:+"))
-    tokens.insert_inplace(toks, 1, token.OP, ":", 0, False)
+    tokens.insert_inplace(toks, 1, token.OP, ":", left_offset=0, right_offset=0)
     assert len(toks) == len(expected), "different count"
     for l, r in zip(toks, expected):
         assert tokens.token_eq(l, r), f"{l} and {r} not equal"
 
 
 def test_insert_inplace_offset():
-    toks = list(tokens.tokenize("1+"))
-    expected = list(tokens.tokenize("1+ :"))
-    tokens.insert_inplace(toks, 2, token.OP, ":", 1, False)
+    toks = list(tokens.tokenize("++"))
+    expected = list(tokens.tokenize("+ : +"))
+    tokens.insert_inplace(toks, 1, token.OP, ":", left_offset=1, right_offset=1)
     assert len(toks) == len(expected), "different count"
     for l, r in zip(toks, expected):
         assert tokens.token_eq(l, r), f"{l} and {r} not equal"
@@ -84,7 +84,7 @@ def test_insert_inplace_offset():
 def test_insert_inplace_newline():
     toks = list(tokens.tokenize("1\n+"))
     expected = list(tokens.tokenize("1\n:+"))
-    tokens.insert_inplace(toks, 2, token.OP, ":", 0, True)
+    tokens.insert_inplace(toks, 2, token.OP, ":", next_row=True)
     assert len(toks) == len(expected), "different count"
     for l, r in zip(toks, expected):
         assert tokens.token_eq(l, r), f"{l} and {r} not equal"
@@ -119,9 +119,9 @@ def test_token_eq():
 
 
 def test_transform_operator_objects_inplace():
-    src = "(a) (...) (not in) ($$) (()) (+) (2+) (~~) (+ -) (is*)"
+    src = "(a)(...)(not in)($$)(())(+)(2+)(~~)(+ -)(is*)"
+    exp = "(a)(...) __operator_nonce_6e6f7420696e  __operator_nonce_2424 (()) __operator_nonce_2b (2+) __operator_nonce_7e7e (+ -)(is*)"
     toks = list(tokens.tokenize(src))
     tokens.transform_operator_objects_inplace(toks, "nonce")
     out = tokenize.untokenize(toks)
-    expected = "(a) (...) (__operator_nonce_6e6f7420696e) (__operator_nonce_2424) (()) (__operator_nonce_2b) (2+) (__operator_nonce_7e7e) (+ -) (is*)"
-    assert out == expected
+    assert exp == out
