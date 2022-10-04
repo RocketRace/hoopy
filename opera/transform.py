@@ -5,6 +5,8 @@ This module is responsible for all operator-related token & AST transformations.
 from __future__ import annotations
 
 import ast
+from collections import namedtuple
+from dataclasses import dataclass
 import token
 from tokenize import TokenInfo
 from typing import Sequence
@@ -112,3 +114,18 @@ def transform_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> Non
         insert_inplace(
             toks, start - 1, token.NAME, mangled, left_offset=1, right_offset=1
         )
+
+
+@dataclass
+class OperatorSpan:
+    left_row: int
+    left_col: int
+    right_row: int
+    right_col: int
+
+
+def transform_infix_identifiers_inplace(
+    toks: list[TokenInfo],
+) -> dict[OperatorSpan, str]:
+    """Substitutes instances of infix identifiers (e.g. `` `foo` ``)
+    with generic multiplier operators."""

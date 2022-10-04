@@ -5,11 +5,12 @@ This is used primarily by the `transform` module.
 """
 
 from __future__ import annotations
+import itertools
 
 import tokenize
 from io import StringIO
 from tokenize import TokenInfo
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, Sequence
 
 
 def offset(tok: TokenInfo, by: int) -> TokenInfo:
@@ -69,10 +70,16 @@ def unlex(toks: Iterable[TokenInfo]) -> str:
     TODO: Also fix "broken" spans, i.e. whenever a token's start
     span precedes the previous token's end span.
     """
-    return tokenize.untokenize(toks)
+    return tokenize.untokenize(fix_spans(list(toks)))
 
 
-def remove_inplace(toks: list[TokenInfo], start: int, end: int | None = None) -> None:
+def remove_inplace(
+    toks: list[TokenInfo],
+    start: int,
+    end: int | None = None,
+    *,
+    shift_rest: bool = True,
+) -> None:
     """Remove some slice within this the token stream, and shift following tokens backward appropriately.
 
     Endpoints are handled the same as with python slices.
@@ -91,7 +98,8 @@ def remove_inplace(toks: list[TokenInfo], start: int, end: int | None = None) ->
         # this is negative (i.e. leftwards)
         offset = s_col - e_col
         toks[start:end] = []
-        offset_line_inplace(toks, line=s_row, by=offset, starting=start)
+        if shift_rest:
+            offset_line_inplace(toks, line=s_row, by=offset, starting=start)
     else:
         raise ValueError(
             "Removing tokens spanning across multiple lines not supported at the moment"
@@ -129,3 +137,29 @@ def insert_inplace(
     offset_line_inplace(
         toks, line=row, by=left_offset + len(string) + right_offset, starting=index + 1
     )
+
+
+def fix_spans(toks: Sequence[TokenInfo]) -> Sequence[TokenInfo]:
+    """Replaces broken token spans in a token stream, making
+    the resulting tokens valid to pass into tokenize.untokenize()"""
+    if len(toks) <= 1:
+        return toks
+
+    out = [x for x in toks]
+    for i in range(len(toks) - 1):
+        prev = out[i]
+        current = out[i + 1]
+
+        p_row, p_col = prev.end
+        c_row, c_col = current.start
+        if p_row < c_row:
+            continue
+        elif p_row > c_row:
+            raise ValueError("Fixing vertical offsets not yet supported")
+        else:
+            if p_col <= c_col:
+                continue
+            else:
+                delta = p_col - c_col
+                out[i + 1] = offset(current, delta)
+    return out

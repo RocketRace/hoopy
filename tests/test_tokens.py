@@ -1,3 +1,5 @@
+import tokenize
+import pytest
 import token
 from random import randint
 from tokenize import TokenInfo
@@ -92,6 +94,16 @@ def test_insert_inplace_newline():
 def test_lex_unlex():
     src = "1 + 2 == 5; 4178937\nfhjsd[]!=(%)#ÅÖlm14kl3ori\n\n\n\taaaaa"
     assert tokens.unlex(tokens.lex(src)) == src
+
+
+def test_fix_spans():
+    toks = list(tokens.lex("123+"))
+    tokens.offset_line_inplace(toks, line=1, by=-3, starting=1)
+
+    with pytest.raises(ValueError):
+        tokenize.untokenize(toks)
+
+    assert tokenize.untokenize(tokens.fix_spans(toks)) == "123+"
 
 
 def test_token_eq():
