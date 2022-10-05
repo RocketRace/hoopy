@@ -2,11 +2,13 @@
 Utility functions for dealing with token streams.
 
 This is used primarily by the `transform` module.
+
+TODO: are in-place transformations really worth it?
 """
 
 from __future__ import annotations
-import itertools
 
+import token
 import tokenize
 from io import StringIO
 from tokenize import TokenInfo
@@ -65,11 +67,7 @@ def lex(source: str) -> Iterator[TokenInfo]:
 
 
 def unlex(toks: Iterable[TokenInfo]) -> str:
-    """Convenience function to reconstruct a string stream from tokens.
-
-    TODO: Also fix "broken" spans, i.e. whenever a token's start
-    span precedes the previous token's end span.
-    """
+    """Convenience function to reconstruct a string stream from tokens."""
     return tokenize.untokenize(fix_spans(list(toks)))
 
 
@@ -163,3 +161,17 @@ def fix_spans(toks: Sequence[TokenInfo]) -> Sequence[TokenInfo]:
                 delta = p_col - c_col
                 out[i + 1] = offset(current, delta)
     return out
+
+
+def pretty_print(toks: Iterable[TokenInfo]) -> None:
+    for type_num, string, start, end, _ in toks:
+        type = token.tok_name[type_num]
+        print(f"TokenInfo({type=!s}, {string=}, {start=}, {end=})")
+
+
+def remove_error_whitespace_inplace(toks: list[TokenInfo]) -> None:
+    """Filters out whitespace tokens rejected by the Python lexer."""
+    for i in reversed(range(len(toks))):
+        tok = toks[i]
+        if tok.string.isspace() and tok.type == token.ERRORTOKEN:
+            del toks[i]

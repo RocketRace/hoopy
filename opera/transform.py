@@ -5,13 +5,13 @@ This module is responsible for all operator-related token & AST transformations.
 from __future__ import annotations
 
 import ast
-from collections import namedtuple
 from dataclasses import dataclass
 import token
 from tokenize import TokenInfo
 from typing import Sequence
+import keyword
 
-from .tokens import insert_inplace, remove_inplace
+from .tokens import insert_inplace, remove_inplace, remove_error_whitespace_inplace
 
 
 def desugar_infix(op: str, left: ast.expr, right: ast.expr) -> ast.Call:
@@ -116,8 +116,10 @@ def transform_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> Non
         )
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class OperatorSpan:
+    """Left and right endpoints of the surrounding tokens"""
+
     left_row: int
     left_col: int
     right_row: int
@@ -127,5 +129,51 @@ class OperatorSpan:
 def transform_infix_identifiers_inplace(
     toks: list[TokenInfo],
 ) -> dict[OperatorSpan, str]:
-    """Substitutes instances of infix identifiers (e.g. `` `foo` ``)
-    with generic multiplier operators."""
+    """Substitutes instances of infix identifiers (e.g. \\`foo`)
+    with generic @ operators, returning the transformed
+    identifiers mapped from the endpoints of the previous and next
+    token spans (to maintain the information). Does not touch the
+    spans of other tokens!
+
+    # Example
+    Transforms the input tokens "foo\\`bar\\`baz" with "foo@baz",
+    returning the dictionary `{ OperatorSpan(1, 3, 1, 4): "bar" }`
+    """
+    remove_error_whitespace_inplace(toks)
+    if len(toks) < 5:
+        return {}
+
+    # TODO: this is an imperative implementation of a fairly
+    # simple functional iterator routine, but I'm not confident
+    # in Python's ability to provide ergonomic or effectient
+    # iterator ops even when using the itertools module...
+    collected_spans: dict[OperatorSpan, str] = {}
+    removed = 0
+    i = 1
+    while i < len(toks) - 4 - removed:
+        first = toks[i]
+        second = toks[i + 1]
+        third = toks[i + 2]
+        if (
+            first.string == "`"
+            and second.type == token.NAME
+            and not keyword.iskeyword(second.string)
+            and third.string == "`"
+        ):
+            remove_inplace(toks, i, i + 3)
+            removed += 2
+
+            left_row, left_col = toks[i - 1].end
+            right_row, right_col = toks[i + 1].start
+            offset = first.start[1] - left_col
+            insert_inplace(
+                toks, i, token.OP, "@", left_offset=offset, right_offset=-offset
+            )
+
+            collected_spans[
+                OperatorSpan(left_row, left_col, right_row, right_col)
+            ] = second.string
+
+        i += 1
+
+    return collected_spans

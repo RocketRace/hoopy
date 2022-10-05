@@ -8,3 +8,17 @@ def test_transform_operator_objects_inplace():
     transform.transform_operator_objects_inplace(toks, "nonce")
     out = tokens.unlex(toks)
     assert exp == out
+
+
+def test_transform_infix_identifiers_inplace():
+    src = "abcd  `efg` `123` 1`b`c`2 `  `"
+    exp = "abcd  @ `123` 1@c`2 `  `"
+    toks = list(tokens.lex(src))
+    spans = transform.transform_infix_identifiers_inplace(toks)
+    exp_spans = {
+        transform.OperatorSpan(1, 4, 1, 8): "efg",
+        transform.OperatorSpan(1, 15, 1, 16): "b",
+    }
+    out = tokens.unlex(toks)
+    assert exp == out
+    assert spans == exp_spans
