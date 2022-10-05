@@ -92,7 +92,7 @@ def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
     return f"__operator_{nonce}_{''.join(f'{ord(c):x}' for c in op_string)}"
 
 
-def transform_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> None:
+def mangle_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> None:
     """Substitutes all instances of objectified operators (e.g. `(+%+)`)
     with their hex representations, such as ` __operator_0f198f1a_2b252b `
     given the nonce `"0f198f1a"`. Notice the extra spaces around the identifiers.
@@ -126,7 +126,7 @@ class OperatorSpan:
     right_col: int
 
 
-def transform_infix_identifiers_inplace(
+def collect_infix_identifiers_inplace(
     toks: list[TokenInfo],
 ) -> dict[OperatorSpan, str]:
     """Substitutes instances of infix identifiers (e.g. \\`foo`)
