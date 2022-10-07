@@ -13,6 +13,7 @@ import tokenize
 from io import StringIO
 from tokenize import TokenInfo
 from typing import Iterable, Iterator, Sequence
+import keyword
 
 
 def offset(tok: TokenInfo, by: int) -> TokenInfo:
@@ -123,8 +124,11 @@ def insert_inplace(
     * right_offset: offset to next token
     * next_row: whether to skip forward to the next row
     """
-    previous = toks[index - 1]
-    row, col = previous.end
+    if index == 0:
+        row, col = 1, 0
+    else:
+        previous = toks[index - 1]
+        row, col = previous.end
     row = row + 1 if next_row else row
     col = left_offset if next_row else col + left_offset
     toks.insert(
@@ -164,7 +168,9 @@ def fix_spans(toks: Sequence[TokenInfo]) -> Sequence[TokenInfo]:
 
 
 def pretty_print(toks: Iterable[TokenInfo]) -> None:
-    for type_num, string, start, end, _ in toks:
+    for tok in toks:
+        _, string, start, end, _ = tok
+        type_num = tok.exact_type
         type = token.tok_name[type_num]
         print(f"TokenInfo({type=!s}, {string=}, {start=}, {end=})")
 
@@ -175,3 +181,41 @@ def remove_error_whitespace_inplace(toks: list[TokenInfo]) -> None:
         tok = toks[i]
         if tok.string.isspace() and tok.type == token.ERRORTOKEN:
             del toks[i]
+
+
+EXPRESSION_ENDER_TYPES = {
+    token.NUMBER,  # int, float, complex
+    token.STRING,  # regular, byte, formatted
+    token.NAME,  # including keywords like None and def
+    token.RPAR,  # )
+    token.RSQB,  # ]
+    token.RBRACE,  # }
+    token.ELLIPSIS,  # ...
+}
+
+EXPRESSION_KEYWORDS = {"None", "True", "False", "NotImplemented"}
+
+ALWAYS_EXPRESSION_STARTER_TYPES = {
+    token.NUMBER,
+    token.STRING,
+    token.NAME,
+    token.LBRACE,
+    token.ELLIPSIS,
+}
+
+
+def expression_ender(tok: TokenInfo) -> bool:
+    """Returns True if `tok` can be the final token in an expression,
+    and `False` otherwise."""
+    return tok.exact_type in EXPRESSION_ENDER_TYPES or (
+        tok.type == token.NAME and tok.string in EXPRESSION_KEYWORDS
+    )
+
+
+def always_expression_starter(tok: TokenInfo) -> bool:
+    """Returns whether `tok` can be the first token in an expression,
+    but cannot directly follow an expression ender as specified by
+    `expression_ender()`. That is, returns True if `tok` always starts
+    a new expression when placed after a previous expression, and
+    False otherwise."""
+    return tok.exact_type in ALWAYS_EXPRESSION_STARTER_TYPES

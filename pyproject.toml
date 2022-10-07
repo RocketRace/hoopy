@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "opera"
+name = "hoopy"
 version = "0.1.0"
 description = ""
 authors = ["Olivia Palmu <oliviaspalmu@gmail.com>"]

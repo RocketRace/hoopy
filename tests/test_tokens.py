@@ -4,7 +4,7 @@ import token
 from random import randint
 from tokenize import TokenInfo
 
-from opera import tokens
+from hoopy import tokens
 
 
 def test_offset():

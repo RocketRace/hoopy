@@ -3,15 +3,17 @@ This module is responsible for all operator-related token & AST transformations.
 """
 
 from __future__ import annotations
+import abc
 
 import ast
 from dataclasses import dataclass
+from enum import IntEnum
 import token
 from tokenize import TokenInfo
-from typing import Sequence
+from typing import Mapping, NamedTuple, Sequence
 import keyword
 
-from .tokens import insert_inplace, remove_inplace, remove_error_whitespace_inplace
+from . import tokens
 
 
 def desugar_infix(op: str, left: ast.expr, right: ast.expr) -> ast.Call:
@@ -99,6 +101,7 @@ def mangle_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> None:
     This is kept to ensure no tokens are accidentally joined together after this
     transformation.
     """
+    tokens.remove_error_whitespace_inplace(toks)
     start = None
     operators: list[tuple[int, int, str]] = []
     for i in range(len(toks)):
@@ -110,69 +113,97 @@ def mangle_operator_objects_inplace(toks: list[TokenInfo], nonce: str) -> None:
                 operators.append((start + 1, i, mangled))
             start = None
     for start, end, mangled in reversed(operators):
-        remove_inplace(toks, start - 1, end + 1)
-        insert_inplace(
+        tokens.remove_inplace(toks, start - 1, end + 1)
+        tokens.insert_inplace(
             toks, start - 1, token.NAME, mangled, left_offset=1, right_offset=1
         )
 
 
-@dataclass(unsafe_hash=True)
-class OperatorSpan:
-    """Left and right endpoints of the surrounding tokens"""
-
-    left_row: int
-    left_col: int
-    right_row: int
-    right_col: int
+class Spans(NamedTuple):
+    left: tuple[int, int]
+    right: tuple[int, int]
 
 
-def collect_infix_identifiers_inplace(
+# No ergonomic ADTs?
+
+
+class Operator(abc.ABC):
+    pass
+
+
+@dataclass
+class Application(Operator):
+    pass
+
+
+@dataclass
+class Identifier(Operator):
+    content: str
+
+
+@dataclass
+class Custom:
+    content: str
+
+
+def collect_operator_tokens_inplace(
     toks: list[TokenInfo],
-) -> dict[OperatorSpan, str]:
-    """Substitutes instances of infix identifiers (e.g. \\`foo`)
-    with generic @ operators, returning the transformed
-    identifiers mapped from the endpoints of the previous and next
-    token spans (to maintain the information). Does not touch the
-    spans of other tokens!
-
-    # Example
-    Transforms the input tokens "foo\\`bar\\`baz" with "foo@baz",
-    returning the dictionary `{ OperatorSpan(1, 3, 1, 4): "bar" }`
+) -> Mapping[Spans, Operator]:
+    """Substitutes instances of infix identifiers (e.g. \\`foo`),
+    implicit function application (e.g. `f x`), and custom operators
+    (e.g. `<$>`) with generic operators, returning information about
+    the transformed regions.
     """
-    remove_error_whitespace_inplace(toks)
-    if len(toks) < 5:
-        return {}
+    tokens.remove_error_whitespace_inplace(toks)
 
-    # TODO: this is an imperative implementation of a fairly
-    # simple functional iterator routine, but I'm not confident
-    # in Python's ability to provide ergonomic or effectient
-    # iterator ops even when using the itertools module...
-    collected_spans: dict[OperatorSpan, str] = {}
-    removed = 0
-    i = 1
-    while i < len(toks) - 4 - removed:
-        first = toks[i]
-        second = toks[i + 1]
-        third = toks[i + 2]
-        if (
-            first.string == "`"
-            and second.type == token.NAME
-            and not keyword.iskeyword(second.string)
-            and third.string == "`"
-        ):
-            remove_inplace(toks, i, i + 3)
-            removed += 2
+    # TODO: this is an imperative implementation of a parser for a regular
+    # language. If only there were some form of regex for token streams...
+    collected_spans: dict[Spans, Operator] = {}
+    i = 0
+    while i < len(toks):
+        if i + 1 < len(toks):
+            first = toks[i]
+            second = toks[i + 1]
+            if tokens.expression_ender(first) and tokens.always_expression_starter(
+                second
+            ):
+                left = first.end
+                tokens.insert_inplace(toks, i + 1, token.OP, "@", left_offset=1)
+                right = toks[i + 2].start
+                collected_spans[Spans(left, right)] = Application()
+                # 2 since we added 1 extra token we don't want to process
+                i += 2
+                continue
 
-            left_row, left_col = toks[i - 1].end
-            right_row, right_col = toks[i + 1].start
-            offset = first.start[1] - left_col
-            insert_inplace(
-                toks, i, token.OP, "@", left_offset=offset, right_offset=-offset
-            )
+        # Infixified identifiers:
+        # a 3-token pattern replaced with a 1-token pattern,
+        # checking 1 token on each end for lookaround
+        if i > 0 and i + 3 < len(toks):
+            first = toks[i]
+            second = toks[i + 1]
+            third = toks[i + 2]
+            if (
+                first.string == "`"
+                and second.type == token.NAME
+                and not keyword.iskeyword(second.string)
+                and third.string == "`"
+            ):
 
-            collected_spans[
-                OperatorSpan(left_row, left_col, right_row, right_col)
-            ] = second.string
+                tokens.remove_inplace(toks, i, i + 3)
+
+                left_row, left_col = toks[i - 1].end
+                offset = first.start[1] - left_col
+                tokens.insert_inplace(
+                    toks, i, token.OP, "@", left_offset=offset, right_offset=-offset
+                )
+                right = toks[i + 1].start
+
+                collected_spans[Spans((left_row, left_col), right)] = Identifier(
+                    second.string
+                )
+
+                i += 1
+                continue
 
         i += 1
 
