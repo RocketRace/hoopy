@@ -5,13 +5,13 @@ User-facing API for infix operators
 from __future__ import annotations
 
 import abc
+import inspect
 import operator
 import sys
 from enum import IntEnum
 from types import ModuleType
 from typing import Any, Callable, Generic, Mapping, overload
 
-from .tokens import BLACKLISTED_OPERATOR_STRINGS
 from .magic import __operator__
 from .utils import Decorator, FunctionContext, T, U, V, context
 
@@ -351,3 +351,29 @@ BUILTIN_OPERATORS: Mapping[str, BuiltinInfixOperator] = dict(
         keyword("or", bool_or),
     ]
 )
+
+
+class PartialFunction:
+    """An implementation of a chainable partial function.
+
+    This only supports calling with positional arguments.
+
+    It is used internally to implement Haskell-style curried
+    function application, allowing e.g. `f x y z` to be
+    functionally equivalent to `f(x, y, z)`.
+    """
+
+    __slots__ = ("func", "args", "n")
+
+    def __init__(self, func: Callable[..., Any]):
+        self.func = func
+        self.args = []
+        spec = inspect.getfullargspec(func)
+        self.n = len(spec.args) - len(spec.defaults or ())
+
+    def __call__(self, arg: Any) -> Any:
+        if len(self.args) >= self.n - 1:
+            return self.func(*self.args, arg)
+        else:
+            self.args.append(arg)
+            return self

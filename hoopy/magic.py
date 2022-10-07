@@ -9,7 +9,7 @@ import sys
 
 from typing import Any, Callable
 
-from .infix import BUILTIN_OPERATORS
+from .infix import BUILTIN_OPERATORS, PartialFunction
 
 __all__ = "__operator__", "__import_operator__"
 
@@ -45,3 +45,10 @@ def __operator__(module: str, key: str) -> Callable[[Any, Any], Any]:
 
 def __import_operator__(module: str, key: str, from_module: str) -> None:
     operator = __operator__(from_module, key)
+
+
+def __partial_apply__(function: Any, argument: Any) -> Any:
+    if isinstance(function, PartialFunction):
+        return function(argument)
+    else:
+        return PartialFunction(function)(argument)
