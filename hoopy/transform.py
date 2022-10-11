@@ -7,7 +7,6 @@ import abc
 
 import ast
 from dataclasses import dataclass
-from enum import IntEnum
 import token
 from tokenize import TokenInfo
 from typing import Mapping, NamedTuple, Sequence
@@ -35,15 +34,47 @@ def desugar_infix(op: str, left: ast.expr, right: ast.expr) -> ast.Call:
     )
 
 
-SYMBOL_TOKEN_STRINGS = set(token.EXACT_TOKEN_TYPES)
-for non_op in ",;()[]{}":
-    SYMBOL_TOKEN_STRINGS.remove(non_op)
-for extra_op in "$!?":
-    SYMBOL_TOKEN_STRINGS.add(extra_op)
-
-KEYWORD_TOKEN_STRINGS = {"is", "not", "and", "or", "in"}
-
 BLACKLISTED_OPERATOR_STRINGS = {"...", ".", ":", "::", ":=", "=", "~"}
+
+ALLOWED_KEYWORD_OPERATOR_STRINGS = {"and", "or", "not", "is", "in", "is not", "not in"}
+
+SIMPLE_OPERATOR_STRINGS = {
+    "+",
+    "-",
+    "*",
+    "/",
+    "//",
+    "%",
+    "@",
+    "**",
+    "&",
+    "|",
+    "^",
+    "<<",
+    ">>",
+    "<",
+    "<=",
+    "==",
+    "=>",
+    ">",
+    "!=",
+}
+
+SIMPLE_INPLACE_OPERATOR_STRINGS = {
+    "+=",
+    "-=",
+    "*=",
+    "/=",
+    "//=",
+    "%=",
+    "@=",
+    "**=",
+    "&=",
+    "|=",
+    "^=",
+    "<<=",
+    ">>=",
+}
 
 
 def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
@@ -59,38 +90,28 @@ def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
     if not toks:
         return None
 
-    # TODO: handle keyword operators in a cleaner way
-    # This matches:
-    # * not
-    # * and
-    # * or
-    # * is
-    # * in
-    # * is not
-    # * not in
-    if (len(toks) == 1 and toks[0].string in KEYWORD_TOKEN_STRINGS) or (
-        len(toks) == 2
-        and (
-            (toks[0].string == "not" and toks[1].string == "in")
-            or (toks[0].string == "is" and toks[1].string == "not")
-        )
+    if 1 <= len(toks) <= 2 and all(
+        tokens.is_keyword_operator_token(tok) for tok in toks
     ):
         op_string = " ".join(tok.string for tok in toks)
+        if op_string not in ALLOWED_KEYWORD_OPERATOR_STRINGS:
+            return None
 
     else:
-        end = None
+        prev = None
         operator: list[str] = []
         for tok in toks:
-            if tok.string not in SYMBOL_TOKEN_STRINGS or (
-                end is not None and tok.start[1] != end
+            if not tokens.is_custom_operator_token(tok) or (
+                prev is not None and not tokens.is_adjacent(prev, tok)
             ):
                 return None
             operator.append(tok.string)
-            end = tok.end[1]
-        op_string = "".join(operator)
+            prev = tok
 
-    if op_string in BLACKLISTED_OPERATOR_STRINGS:
-        return None
+        op_string = "".join(operator)
+        if op_string in BLACKLISTED_OPERATOR_STRINGS:
+            return None
+
     return f"__operator_{nonce}_{''.join(f'{ord(c):x}' for c in op_string)}"
 
 
@@ -124,7 +145,7 @@ class Spans(NamedTuple):
     right: tuple[int, int]
 
 
-# No ergonomic ADTs?
+# No ergonomic ADTs? :'c
 
 
 class Operator(abc.ABC):
@@ -142,8 +163,19 @@ class Identifier(Operator):
 
 
 @dataclass
-class Custom:
+class Custom(Operator):
     content: str
+
+
+@dataclass
+class Inplace(Operator):
+    content: str
+
+
+def operator_proxy_for(string: str) -> str:
+    """Returns the simple operator string associated with the given
+    more complex operator string."""
+    raise NotImplementedError(string)
 
 
 def collect_operator_tokens_inplace(
@@ -161,12 +193,14 @@ def collect_operator_tokens_inplace(
     collected_spans: dict[Spans, Operator] = {}
     i = 0
     while i < len(toks):
-        if i + 1 < len(toks):
+        # Function application
+        # TODO: handle newline-delimited application by keeping a stack of [](){}
+        if i < len(toks) - 1:
             first = toks[i]
             second = toks[i + 1]
-            if tokens.expression_ender(first) and tokens.always_expression_starter(
-                second
-            ):
+            if tokens.is_expression_ender(
+                first
+            ) and tokens.is_always_expression_starter(second):
                 left = first.end
                 tokens.insert_inplace(toks, i + 1, token.OP, "@", left_offset=1)
                 right = toks[i + 2].start
@@ -178,7 +212,7 @@ def collect_operator_tokens_inplace(
         # Infixified identifiers:
         # a 3-token pattern replaced with a 1-token pattern,
         # checking 1 token on each end for lookaround
-        if i > 0 and i + 3 < len(toks):
+        if 0 < i < len(toks) - 3:
             first = toks[i]
             second = toks[i + 1]
             third = toks[i + 2]
@@ -204,6 +238,48 @@ def collect_operator_tokens_inplace(
 
                 i += 1
                 continue
+
+        # Custom infix operators can be of variable width
+        current = toks[i]
+        operator = [current]
+        if 0 < i < len(toks) - 1 and tokens.is_custom_operator_token(current):
+            while i + len(operator) + 1 < len(toks):
+                next = toks[i + len(operator)]
+                if tokens.is_custom_operator_token(next) and tokens.is_adjacent(
+                    current, next
+                ):
+                    operator.append(next)
+                    current = next
+                else:
+                    break
+
+            op_string = "".join(tok.string for tok in operator)
+            if (
+                op_string not in BLACKLISTED_OPERATOR_STRINGS
+                and op_string not in SIMPLE_OPERATOR_STRINGS
+            ):
+
+                tokens.remove_inplace(toks, i, i + len(operator))
+                left_row, left_col = toks[i - 1].end
+                offset = operator[0].start[1] - left_col
+
+                inplace = op_string in SIMPLE_INPLACE_OPERATOR_STRINGS
+
+                tokens.insert_inplace(
+                    # We need an extra space of offset for token hygeine,
+                    # since the proxy may return `and` and `or`
+                    toks,
+                    i,
+                    token.OP,
+                    operator_proxy_for(op_string),
+                    left_offset=offset + 1,
+                    right_offset=-offset + 1,
+                )
+                right = toks[i + 1].start
+
+                collected_spans[Spans((left_row, left_col), right)] = (
+                    Inplace if inplace else Custom
+                )(op_string)
 
         i += 1
 

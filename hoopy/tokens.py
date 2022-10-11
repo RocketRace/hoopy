@@ -195,6 +195,7 @@ EXPRESSION_ENDER_TYPES = {
 
 EXPRESSION_KEYWORDS = {"None", "True", "False", "NotImplemented"}
 
+# Does not include ( or [ since those will extend a previous expression
 ALWAYS_EXPRESSION_STARTER_TYPES = {
     token.NUMBER,
     token.STRING,
@@ -204,7 +205,7 @@ ALWAYS_EXPRESSION_STARTER_TYPES = {
 }
 
 
-def expression_ender(tok: TokenInfo) -> bool:
+def is_expression_ender(tok: TokenInfo) -> bool:
     """Returns True if `tok` can be the final token in an expression,
     and `False` otherwise."""
     return tok.exact_type in EXPRESSION_ENDER_TYPES or (
@@ -212,10 +213,38 @@ def expression_ender(tok: TokenInfo) -> bool:
     )
 
 
-def always_expression_starter(tok: TokenInfo) -> bool:
+def is_always_expression_starter(tok: TokenInfo) -> bool:
     """Returns whether `tok` can be the first token in an expression,
     but cannot directly follow an expression ender as specified by
     `expression_ender()`. That is, returns True if `tok` always starts
     a new expression when placed after a previous expression, and
     False otherwise."""
     return tok.exact_type in ALWAYS_EXPRESSION_STARTER_TYPES
+
+
+SYMBOL_TOKEN_STRINGS = set(token.EXACT_TOKEN_TYPES)
+for non_op in ",;()[]{}":
+    SYMBOL_TOKEN_STRINGS.remove(non_op)
+for extra_op in "$!?":
+    SYMBOL_TOKEN_STRINGS.add(extra_op)
+
+KEYWORD_TOKEN_STRINGS = {"is", "not", "and", "or", "in"}
+
+
+def is_keyword_operator_token(tok: TokenInfo) -> bool:
+    """Returns True if `tok` may be part of a builtin keyword
+    operator, False otherwise."""
+    return tok.string in KEYWORD_TOKEN_STRINGS
+
+
+def is_custom_operator_token(tok: TokenInfo) -> bool:
+    """Returns True if `tok` may form part of a custom operator,
+    False otherwise.
+    """
+    return tok.string in SYMBOL_TOKEN_STRINGS
+
+
+def is_adjacent(first: TokenInfo, second: TokenInfo) -> bool:
+    """Returns True if the span of `first` immediately precedes
+    `second` (and they don't overlap), False otherwise."""
+    return first.end == second.start

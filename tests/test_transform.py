@@ -9,7 +9,7 @@ class TestMangleOperatorObjectsInplace:
         transform.mangle_operator_objects_inplace(toks, "nonce")
         tokens.pretty_print(toks)
         out = tokens.unlex(toks)
-        assert exp == out
+        assert out == exp
 
     def test_non_operators(self):
         self.expect_transformation("(a)", "(a)")
