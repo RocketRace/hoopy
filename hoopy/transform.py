@@ -139,6 +139,9 @@ class Inplace(Operator):
     content: str
 
 
+DEFAULT_OPERATOR = "*"
+
+
 def collect_operator_tokens_inplace(
     toks: list[TokenInfo],
 ) -> Mapping[Spans, Operator]:
@@ -157,14 +160,18 @@ def collect_operator_tokens_inplace(
     while i < len(toks):
         # Function application
         # TODO: handle newline-delimited application by keeping a stack of [](){}
-        if i < len(toks) - 1:
-            first = toks[i]
-            second = toks[i + 1]
-            if tokens.is_expression_ender(
+        match toks[i : i + 2]:
+            case [
+                TokenInfo(end=left) as first,
+                TokenInfo() as second,
+            ] if tokens.is_expression_ender(
                 first
-            ) and tokens.is_always_expression_starter(second):
-                left = first.end
-                tokens.insert_inplace(toks, i + 1, token.OP, "*", left_offset=1)
+            ) and tokens.is_always_expression_starter(
+                second
+            ):
+                tokens.insert_inplace(
+                    toks, i + 1, token.OP, DEFAULT_OPERATOR, left_offset=1
+                )
                 right = toks[i + 2].start
                 collected_spans[Spans(left, right)] = Application()
                 # 2 since we added 1 extra token we don't need to process anymore
@@ -174,30 +181,27 @@ def collect_operator_tokens_inplace(
         # Infixified identifiers:
         # a 3-token pattern replaced with a 1-token pattern,
         # checking 1 token on each end for lookaround
-        if 0 < i < len(toks) - 3:
-            first = toks[i]
-            second = toks[i + 1]
-            third = toks[i + 2]
-            if (
-                first.string == "`"
-                and second.type == token.NAME
-                and not keyword.iskeyword(second.string)
-                and third.string == "`"
-            ):
-
+        match toks[i - 1 : i + 4]:
+            case [
+                TokenInfo(end=(left_row, left_col)),
+                TokenInfo(string="`", start=(_, start_col)),
+                TokenInfo(type=token.NAME, string=string),
+                TokenInfo(string="`"),
+                TokenInfo(),
+            ] if not keyword.iskeyword(string):
                 tokens.remove_inplace(toks, i, i + 3)
-
-                left_row, left_col = toks[i - 1].end
-                offset = first.start[1] - left_col
-                tokens.insert_inplace(
-                    toks, i, token.OP, "*", left_offset=offset, right_offset=-offset
-                )
+                # after mutation
                 right = toks[i + 1].start
-
-                collected_spans[Spans((left_row, left_col), right)] = Identifier(
-                    second.string
+                offset = start_col - left_col
+                tokens.insert_inplace(
+                    toks,
+                    i,
+                    token.OP,
+                    DEFAULT_OPERATOR,
+                    left_offset=offset,
+                    right_offset=-offset,
                 )
-
+                collected_spans[Spans((left_row, left_col), right)] = Identifier(string)
                 i += 1
                 continue
 
