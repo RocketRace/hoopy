@@ -275,20 +275,16 @@ class HoopyTransformer(ast.NodeTransformer):
 
         stmts = node.body
         # this evaluates to 0 or 1 depending on if there's a module docstring
-        offset = (
-            len(stmts) > 0
-            and isinstance((fst := stmts[0]), ast.Expr)
-            and isinstance((const := fst.value), ast.Constant)
-            and isinstance(const.value, str)
-        )
+        offset = 0
+        match stmts:
+            case [ast.Expr(value=ast.Constant(value=str()))]:
+                offset += 1
 
         # skip past every __future__ import
-        while (
-            len(stmts) > offset
-            and isinstance((stmt := stmts[offset]), ast.ImportFrom)
-            and stmt.module == "__future__"
-        ):
-            offset += 1
+        while offset < len(stmts):
+            match stmts[offset]:
+                case ast.ImportFrom(module="__future__"):
+                    offset += 1
 
         stmts.insert(offset, magic_imports())
         return ast.Module(body=stmts, type_ignores=node.type_ignores)
