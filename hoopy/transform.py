@@ -22,8 +22,7 @@ from .runtime import (
 
 
 def desugar_infix(op: str, left: ast.expr, right: ast.expr) -> ast.Call:
-    """
-    Generates an AST node of the form
+    """Generates an AST node of the form
     ```
     __operator__(__name__, op)(left, right)
     ```
@@ -38,6 +37,11 @@ def desugar_infix(op: str, left: ast.expr, right: ast.expr) -> ast.Call:
         args=[left, right],
         keywords=[],
     )
+
+
+def magic_imports() -> ast.ImportFrom:
+    """Generates an AST node importing the special dunder methods from `hoopy.magic`."""
+    return ast.ImportFrom(module="hoopy.magic", names=[ast.alias(name="*")])
 
 
 def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
@@ -253,3 +257,38 @@ def collect_operator_tokens_inplace(
         i += 1
 
     return collected_spans
+
+
+class HoopyTransformer(ast.NodeTransformer):
+    """Class responsible for AST node manipulation."""
+
+    def __init__(self, custom_spans: Mapping[Spans, Operator]) -> None:
+        super().__init__()
+        self.spans = custom_spans
+
+    def visit_Module(self, node: ast.Module) -> Any:
+        # visit child nodes first
+        node = self.generic_visit(node)  # type: ignore
+
+        # The magic import `from hoopy.magic import *` must go after
+        # the module docstring and any __future__ imports
+
+        stmts = node.body
+        # this evaluates to 0 or 1 depending on if there's a module docstring
+        offset = (
+            len(stmts) > 0
+            and isinstance((fst := stmts[0]), ast.Expr)
+            and isinstance((const := fst.value), ast.Constant)
+            and isinstance(const.value, str)
+        )
+
+        # skip past every __future__ import
+        while (
+            len(stmts) > offset
+            and isinstance((stmt := stmts[offset]), ast.ImportFrom)
+            and stmt.module == "__future__"
+        ):
+            offset += 1
+
+        stmts.insert(offset, magic_imports())
+        return ast.Module(body=stmts, type_ignores=node.type_ignores)

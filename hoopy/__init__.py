@@ -94,3 +94,4 @@ Custom operator semantics:
 # print(*Preprocessor.tokenize(source), sep="\n")
 # print(ast.dump(ast.parse(source), indent=4))
 # exec(source)
+from .infix import infix as infix

@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from .runtime import BUILTIN_OPERATORS, PartialFunction
 
+# The transformer inserts `from hoopy.magic import *` to transformed programs
 __all__ = "__operator__", "__import_operator__", "__partial_apply__"
 
 
