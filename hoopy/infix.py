@@ -8,7 +8,7 @@ import sys
 from typing import Callable
 
 from .runtime import (
-    BLACKLISTED_OPERATOR_STRINGS,
+    DISALLOWED_OPERATOR_STRINGS,
     BUILTIN_OPERATORS,
     InfixOperator,
     bind_op_to,
@@ -95,7 +95,7 @@ def infix(
     ```
 
     """
-    if op in BLACKLISTED_OPERATOR_STRINGS:
+    if op in DISALLOWED_OPERATOR_STRINGS:
         raise ValueError(f"The operator '{op}' is not allowed")
         # TODO
 
