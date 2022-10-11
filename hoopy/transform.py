@@ -3,16 +3,17 @@ This module is responsible for all operator-related token & AST transformations.
 """
 
 from __future__ import annotations
-import abc
 
+import abc
 import ast
-from dataclasses import dataclass
+import keyword
 import token
+from dataclasses import dataclass
 from tokenize import TokenInfo
 from typing import Mapping, NamedTuple, Sequence
-import keyword
 
 from . import tokens
+from .runtime import BLACKLISTED_OPERATOR_STRINGS, OperatorKind, is_builtin_with_kind
 
 
 def desugar_infix(op: str, left: ast.expr, right: ast.expr) -> ast.Call:
@@ -34,49 +35,6 @@ def desugar_infix(op: str, left: ast.expr, right: ast.expr) -> ast.Call:
     )
 
 
-BLACKLISTED_OPERATOR_STRINGS = {"...", ".", ":", "::", ":=", "=", "~"}
-
-ALLOWED_KEYWORD_OPERATOR_STRINGS = {"and", "or", "not", "is", "in", "is not", "not in"}
-
-SIMPLE_OPERATOR_STRINGS = {
-    "+",
-    "-",
-    "*",
-    "/",
-    "//",
-    "%",
-    "@",
-    "**",
-    "&",
-    "|",
-    "^",
-    "<<",
-    ">>",
-    "<",
-    "<=",
-    "==",
-    "=>",
-    ">",
-    "!=",
-}
-
-SIMPLE_INPLACE_OPERATOR_STRINGS = {
-    "+=",
-    "-=",
-    "*=",
-    "/=",
-    "//=",
-    "%=",
-    "@=",
-    "**=",
-    "&=",
-    "|=",
-    "^=",
-    "<<=",
-    ">>=",
-}
-
-
 def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
     """Returns the mangled representation of a token, or None if the tokens
     don't constitute a valid operator.
@@ -94,7 +52,7 @@ def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
         tokens.is_keyword_operator_token(tok) for tok in toks
     ):
         op_string = " ".join(tok.string for tok in toks)
-        if op_string not in ALLOWED_KEYWORD_OPERATOR_STRINGS:
+        if not is_builtin_with_kind(op_string, OperatorKind.Keyword):
             return None
 
     else:
@@ -182,9 +140,10 @@ def collect_operator_tokens_inplace(
     toks: list[TokenInfo],
 ) -> Mapping[Spans, Operator]:
     """Substitutes instances of infix identifiers (e.g. \\`foo`),
-    implicit function application (e.g. `f x`), and custom operators
-    (e.g. `<$>`) with generic operators, returning information about
-    the transformed regions.
+    implicit function application (e.g. `f x`), custom operators
+    (e.g. `<$>`) with generic operators, and in-place operators
+    (e.g. `>>=`) with their non-inplace variants, returning
+    information about the transformed regions.
     """
     tokens.remove_error_whitespace_inplace(toks)
 
@@ -243,6 +202,7 @@ def collect_operator_tokens_inplace(
         current = toks[i]
         operator = [current]
         if 0 < i < len(toks) - 1 and tokens.is_custom_operator_token(current):
+            # slurp the next token while we can
             while i + len(operator) + 1 < len(toks):
                 next = toks[i + len(operator)]
                 if tokens.is_custom_operator_token(next) and tokens.is_adjacent(
@@ -256,14 +216,12 @@ def collect_operator_tokens_inplace(
             op_string = "".join(tok.string for tok in operator)
             if (
                 op_string not in BLACKLISTED_OPERATOR_STRINGS
-                and op_string not in SIMPLE_OPERATOR_STRINGS
+                and not is_builtin_with_kind(op_string, OperatorKind.Symbolic)
             ):
 
                 tokens.remove_inplace(toks, i, i + len(operator))
                 left_row, left_col = toks[i - 1].end
                 offset = operator[0].start[1] - left_col
-
-                inplace = op_string in SIMPLE_INPLACE_OPERATOR_STRINGS
 
                 tokens.insert_inplace(
                     # We need an extra space of offset for token hygeine,
@@ -278,9 +236,15 @@ def collect_operator_tokens_inplace(
                 right = toks[i + 1].start
 
                 collected_spans[Spans((left_row, left_col), right)] = (
-                    Inplace if inplace else Custom
+                    Inplace
+                    if is_builtin_with_kind(op_string, OperatorKind.Inplace)
+                    else Custom
                 )(op_string)
 
+                i += 1
+                continue
+
+        # no patterns succeeded
         i += 1
 
     return collected_spans

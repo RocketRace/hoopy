@@ -9,7 +9,7 @@ import sys
 
 from typing import Any, Callable
 
-from .infix import BUILTIN_OPERATORS, PartialFunction
+from .runtime import BUILTIN_OPERATORS, PartialFunction
 
 __all__ = "__operator__", "__import_operator__"
 
