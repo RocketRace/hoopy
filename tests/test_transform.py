@@ -66,13 +66,13 @@ class TestCollectOperatorTokensInplace:
         toks = list(tokens.lex(src))
         exp_spans = transform.collect_operator_tokens_inplace(toks)
         out = tokens.unlex(toks)
-        assert exp == out
+        assert out == exp
         assert spans == exp_spans
 
     def test_strange_backticks(self):
         self.expect_transformation(
             "a cd  `efg` `123` 1`b`c`2 `  `",
-            "a @ cd  @ `123` 1@c`2 `  `",
+            "a * cd  * `123` 1*c`2 `  `",
             {
                 transform.Spans((1, 1), (1, 4)): transform.Application(),
                 transform.Spans((1, 6), (1, 10)): transform.Identifier("efg"),
@@ -83,7 +83,7 @@ class TestCollectOperatorTokensInplace:
     def test_function_application_example(self):
         self.expect_transformation(
             "(fs[0]) True x {1, 2, 3} None 'hi'",
-            "(fs[0]) @ True @ x @ {1, 2, 3} @ None @ 'hi'",
+            "(fs[0]) * True * x * {1, 2, 3} * None * 'hi'",
             {
                 transform.Spans((1, 7), (1, 10)): transform.Application(),
                 transform.Spans((1, 14), (1, 17)): transform.Application(),
@@ -92,3 +92,17 @@ class TestCollectOperatorTokensInplace:
                 transform.Spans((1, 37), (1, 40)): transform.Application(),
             },
         )
+
+    def test_custom_operator_example(self):
+        self.expect_transformation(
+            "f <$> x <*> y <*> z ?? d",
+            "f << x << y << z  and  d",
+            {
+                transform.Spans((1, 1), (1, 5)): transform.Custom("<$>"),
+                transform.Spans((1, 6), (1, 10)): transform.Custom("<*>"),
+                transform.Spans((1, 11), (1, 15)): transform.Custom("<*>"),
+                transform.Spans((1, 16), (1, 23)): transform.Custom("??"),
+            },
+        )
+
+    # TODO: more infix tests

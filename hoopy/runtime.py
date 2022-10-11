@@ -268,8 +268,52 @@ class PartialFunction:
             return self
 
 
-multiplicative = "*/%@.:"
-additive = "+-"
-bitwise = "|&^~"
-comparison = "=<>!?"
-other = "$"
+# Haskell:
+# 9 . !!
+# 8 ** ^ ^^
+# 7 * /
+# 6 + - <>
+# 5 ++ :
+# 4 == < > <= >= /= <$ <$> $> <* <*> *>
+# 3 &&
+# 2 ||
+# 1 >>= >> =<<
+# 0 $ $!
+
+# Hoopy:
+# 8 * / @ % . !
+# 7 + - :
+# 6 < >
+# 5 &
+# 4 ^
+# 3 |
+# 2 = ~
+# 1 ?
+# 0 $
+
+OPERATOR_PROXIES = {
+    "*": "*",
+    "/": "*",
+    "@": "*",
+    "%": "*",
+    ".": "*",
+    "!": "*",
+    "+": "+",
+    "-": "+",
+    ":": "+",
+    "<": "<<",
+    ">": "<<",
+    "&": "&",
+    "^": "^",
+    "|": "|",
+    "=": "==",
+    "~": "==",
+    "?": "and",
+    "$": "or",
+}
+
+
+def operator_proxy_for(string: str) -> str:
+    """Returns the simple operator string associated with the given
+    more complex operator string."""
+    return OPERATOR_PROXIES[string[0]]

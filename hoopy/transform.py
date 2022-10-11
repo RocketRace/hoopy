@@ -10,10 +10,15 @@ import keyword
 import token
 from dataclasses import dataclass
 from tokenize import TokenInfo
-from typing import Mapping, NamedTuple, Sequence
+from typing import Any, Mapping, NamedTuple, Sequence
 
 from . import tokens
-from .runtime import BLACKLISTED_OPERATOR_STRINGS, OperatorKind, is_builtin_with_kind
+from .runtime import (
+    BLACKLISTED_OPERATOR_STRINGS,
+    OperatorKind,
+    is_builtin_with_kind,
+    operator_proxy_for,
+)
 
 
 def desugar_infix(op: str, left: ast.expr, right: ast.expr) -> ast.Call:
@@ -130,12 +135,6 @@ class Inplace(Operator):
     content: str
 
 
-def operator_proxy_for(string: str) -> str:
-    """Returns the simple operator string associated with the given
-    more complex operator string."""
-    raise NotImplementedError(string)
-
-
 def collect_operator_tokens_inplace(
     toks: list[TokenInfo],
 ) -> Mapping[Spans, Operator]:
@@ -161,10 +160,10 @@ def collect_operator_tokens_inplace(
                 first
             ) and tokens.is_always_expression_starter(second):
                 left = first.end
-                tokens.insert_inplace(toks, i + 1, token.OP, "@", left_offset=1)
+                tokens.insert_inplace(toks, i + 1, token.OP, "*", left_offset=1)
                 right = toks[i + 2].start
                 collected_spans[Spans(left, right)] = Application()
-                # 2 since we added 1 extra token we don't want to process
+                # 2 since we added 1 extra token we don't need to process anymore
                 i += 2
                 continue
 
@@ -187,7 +186,7 @@ def collect_operator_tokens_inplace(
                 left_row, left_col = toks[i - 1].end
                 offset = first.start[1] - left_col
                 tokens.insert_inplace(
-                    toks, i, token.OP, "@", left_offset=offset, right_offset=-offset
+                    toks, i, token.OP, "*", left_offset=offset, right_offset=-offset
                 )
                 right = toks[i + 1].start
 
@@ -199,6 +198,7 @@ def collect_operator_tokens_inplace(
                 continue
 
         # Custom infix operators can be of variable width
+        # This also catches in-place operators
         current = toks[i]
         operator = [current]
         if 0 < i < len(toks) - 1 and tokens.is_custom_operator_token(current):
@@ -223,23 +223,28 @@ def collect_operator_tokens_inplace(
                 left_row, left_col = toks[i - 1].end
                 offset = operator[0].start[1] - left_col
 
+                proxy = operator_proxy_for(op_string)
+                bonus = proxy.isalpha()
+
                 tokens.insert_inplace(
                     # We need an extra space of offset for token hygeine,
                     # since the proxy may return `and` and `or`
                     toks,
                     i,
                     token.OP,
-                    operator_proxy_for(op_string),
-                    left_offset=offset + 1,
-                    right_offset=-offset + 1,
+                    proxy,
+                    left_offset=offset + bonus,
+                    right_offset=-offset + bonus,
                 )
                 right = toks[i + 1].start
 
-                collected_spans[Spans((left_row, left_col), right)] = (
+                kind = (
                     Inplace
                     if is_builtin_with_kind(op_string, OperatorKind.Inplace)
                     else Custom
-                )(op_string)
+                )
+
+                collected_spans[Spans((left_row, left_col), right)] = kind(op_string)
 
                 i += 1
                 continue

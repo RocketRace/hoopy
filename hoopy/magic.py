@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from .runtime import BUILTIN_OPERATORS, PartialFunction
 
-__all__ = "__operator__", "__import_operator__"
+__all__ = "__operator__", "__import_operator__", "__partial_apply__"
 
 
 def __operator__(module: str, key: str) -> Callable[[Any, Any], Any]:
