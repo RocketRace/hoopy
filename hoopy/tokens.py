@@ -183,43 +183,42 @@ def remove_error_whitespace_inplace(toks: list[TokenInfo]) -> None:
             del toks[i]
 
 
-EXPRESSION_ENDER_TYPES = {
+POSSIBLE_EXPRESSION_ENDERS = {
     token.NUMBER,  # int, float, complex
     token.STRING,  # regular, byte, formatted
-    token.NAME,  # including keywords like None and def
     token.RPAR,  # )
     token.RSQB,  # ]
     token.RBRACE,  # }
     token.ELLIPSIS,  # ...
+    token.NAME,  # not all names
 }
-
-EXPRESSION_KEYWORDS = {"None", "True", "False", "NotImplemented"}
 
 # Does not include ( or [ since those will extend a previous expression
-ALWAYS_EXPRESSION_STARTER_TYPES = {
+POSSIBLE_EXPRESSION_STARTERS = {
     token.NUMBER,
     token.STRING,
-    token.NAME,
     token.LBRACE,
     token.ELLIPSIS,
+    token.NAME,
 }
 
+ALLOWED_EXPRESSION_KEYWORDS = {"None", "True", "False", "NotImplemented"}
+DISALLOWED_EXPRESSION_KEYWORDS = (
+    # mind the precedence
+    (set(keyword.kwlist) | set(keyword.softkwlist))
+    - ALLOWED_EXPRESSION_KEYWORDS
+)
 
-def is_expression_ender(tok: TokenInfo) -> bool:
-    """Returns True if `tok` can be the final token in an expression,
-    and `False` otherwise."""
-    return tok.exact_type in EXPRESSION_ENDER_TYPES or (
-        tok.type == token.NAME and tok.string in EXPRESSION_KEYWORDS
+
+def contains_expression_boundary(left: TokenInfo, right: TokenInfo) -> bool:
+    """Returns whether the left and right tokens belong to
+    different expressions."""
+    return (
+        left.exact_type in POSSIBLE_EXPRESSION_ENDERS
+        and left.string not in DISALLOWED_EXPRESSION_KEYWORDS
+        and right.exact_type in POSSIBLE_EXPRESSION_STARTERS
+        and right.string not in DISALLOWED_EXPRESSION_KEYWORDS
     )
-
-
-def is_always_expression_starter(tok: TokenInfo) -> bool:
-    """Returns whether `tok` can be the first token in an expression,
-    but cannot directly follow an expression ender as specified by
-    `expression_ender()`. That is, returns True if `tok` always starts
-    a new expression when placed after a previous expression, and
-    False otherwise."""
-    return tok.exact_type in ALWAYS_EXPRESSION_STARTER_TYPES
 
 
 SYMBOL_TOKEN_STRINGS = set(token.EXACT_TOKEN_TYPES)

@@ -280,6 +280,18 @@ class PartialFunction:
 # 1 >>= >> =<<
 # 0 $ $!
 
+# Python:
+# 9 ** (right-associative)
+# 8 * / // % @
+# 7 + -
+# 6 << >>
+# 5 &
+# 4 ^
+# 3 |
+# 2 == != > < >= <= in is (comparison-associative)
+# 1 and
+# 0 or
+
 # Hoopy:
 # 8 * / @ % . !
 # 7 + - :
@@ -287,7 +299,7 @@ class PartialFunction:
 # 5 &
 # 4 ^
 # 3 |
-# 2 = ~
+# 2 = ~ (left-associative)
 # 1 ?
 # 0 $
 

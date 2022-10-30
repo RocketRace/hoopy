@@ -64,7 +64,7 @@ class TestMangleOperatorObjectsInplace:
 class TestCollectOperatorTokensInplace:
     def expect_transformation(self, src, exp, spans):
         toks = list(tokens.lex(src))
-        exp_spans = transform.collect_operator_tokens_inplace(toks)
+        _, exp_spans = transform.collect_operator_tokens_inplace(toks)
         out = tokens.unlex(toks)
         assert out == exp
         assert spans == exp_spans
@@ -105,4 +105,38 @@ class TestCollectOperatorTokensInplace:
             },
         )
 
-    # TODO: more infix tests
+    def test_invalid_keyword_application(self):
+        # not exhaustive
+        disallowed = (
+            "x in",
+            "in x",
+            "import x",
+            "is not",
+            "not x",
+            "async for",
+            "for x",
+            "await x",
+            "lambda x",
+            "def x",
+            "async def",
+            "not not" "not in",
+            "not True",
+            "None if",
+            "return NotImplemented",
+        )
+        for bad in disallowed:
+            self.expect_transformation(bad, bad, {})
+
+    def test_valid_keyword_application(self):
+        allowed = (
+            ("x None", "x * None", 1),  # left end, right end
+            ("x True", "x * True", 1),
+            ("True False", "True * False", 4),
+            ("NotImplemented x", "NotImplemented * x", 14),
+        )
+        for a, b, c in allowed:
+            self.expect_transformation(
+                a, b, {transform.Spans((1, c), (1, c + 3)): transform.Application()}
+            )
+
+    # TODO: more infix token tests

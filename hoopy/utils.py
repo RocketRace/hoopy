@@ -4,6 +4,7 @@ Generic utilities used by the library, with no operator-specific functionality
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 import enum
 from typing import Any, Callable, ParamSpec, TypeAlias, TypeVar
 
@@ -53,3 +54,16 @@ def context(fn: Callable[..., Any]) -> FunctionContext:
         return FunctionContext.Local
     else:
         return FunctionContext.Class
+
+
+# poorly typed, but pyright or mypy don't support proper bidirectional type inference
+@dataclass
+class Pipe:
+    __slots__ = ("value",)
+    value: Any
+
+    def __or__(self, fn: Callable[[Any], Any]) -> Pipe:
+        return Pipe(fn(self.value))
+
+    def __call__(self) -> Any:
+        return self.value
