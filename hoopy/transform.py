@@ -23,7 +23,7 @@ from .runtime import (
     is_builtin_with_kind,
     operator_proxy_for,
 )
-from .utils import Pipe
+from .utils import Pipe, Span, SpanTree
 
 
 def generate_import(module: str | None, level: int, op: str) -> ast.stmt:
@@ -147,14 +147,6 @@ def mangle_operator_objects_inplace(
     return toks
 
 
-class Spans(NamedTuple):
-    start: tuple[int, int]
-    end: tuple[int, int]
-
-    def __bool__(self) -> Literal[True]:
-        return True
-
-
 class OperatorBase(abc.ABC):
     @abc.abstractmethod
     def generate(self, left: ast.expr, right: ast.expr) -> ast.expr:
@@ -256,17 +248,14 @@ Operator = Inplace | Custom | Identifier | Application
 DEFAULT_OPERATOR = "*"
 
 
-def compute_new_spans(neighbor: TokenInfo, left_offset: int, op_str: str) -> Spans:
+def compute_new_spans(left: TokenInfo, right: TokenInfo) -> Span:
     """Fetches the start & end points for a newly created token based on its leftmost neighbor"""
-    row, col = neighbor.end
-    left = (row, col + left_offset)
-    right = (row, col + left_offset + len(op_str))
-    return Spans(left, right)
+    return Span(left.end, right.start)
 
 
 def collect_operator_tokens_inplace(
     toks: list[TokenInfo],
-) -> tuple[list[TokenInfo], Mapping[Spans, Operator]]:
+) -> tuple[list[TokenInfo], Mapping[Span, Operator]]:
     """Substitutes instances of infix identifiers (e.g. \\`foo`),
     implicit function application (e.g. `f x`), custom operators
     (e.g. `<$>`) with generic operators, and in-place operators
@@ -277,7 +266,7 @@ def collect_operator_tokens_inplace(
 
     # TODO: this is an imperative implementation of a parser for a regular
     # language. If only there were some form of regex for token streams...
-    collected_spans: dict[Spans, Operator] = {}
+    collected_spans: dict[Span, Operator] = {}
     i = 0
     while i < len(toks):
         # Function application
@@ -290,9 +279,7 @@ def collect_operator_tokens_inplace(
                 tokens.insert_inplace(
                     toks, i + 1, token.OP, DEFAULT_OPERATOR, left_offset=1
                 )
-                collected_spans[
-                    compute_new_spans(first, left_offset=1, op_str=DEFAULT_OPERATOR)
-                ] = Application()
+                collected_spans[compute_new_spans(toks[i], toks[i + 2])] = Application()
                 # 2 since we added 1 extra token we don't need to process anymore
                 i += 2
                 continue
@@ -302,7 +289,7 @@ def collect_operator_tokens_inplace(
         # checking 1 token on each end for lookaround
         match toks[i - 1 : i + 4]:
             case [
-                TokenInfo(end=(left_row, left_col)) as first,
+                TokenInfo(end=(_, left_col)) as first,
                 TokenInfo(string="`", start=(_, start_col)),
                 TokenInfo(type=token.NAME, string=string),
                 TokenInfo(string="`"),
@@ -310,7 +297,6 @@ def collect_operator_tokens_inplace(
             ] if not keyword.iskeyword(string):
                 tokens.remove_inplace(toks, i, i + 3)
                 # after mutation
-                right = toks[i + 1].start
                 offset = start_col - left_col
                 tokens.insert_inplace(
                     toks,
@@ -321,9 +307,7 @@ def collect_operator_tokens_inplace(
                     right_offset=-offset,
                 )
                 collected_spans[
-                    compute_new_spans(
-                        first, left_offset=offset, op_str=DEFAULT_OPERATOR
-                    )
+                    compute_new_spans(toks[i - 1], toks[i + 1])
                 ] = Identifier(string)
                 i += 1
                 continue
@@ -373,11 +357,9 @@ def collect_operator_tokens_inplace(
                     else Custom
                 )
 
-                collected_spans[
-                    compute_new_spans(
-                        toks[i - 1], left_offset=offset + bonus, op_str=proxy
-                    )
-                ] = kind(op_string)
+                collected_spans[compute_new_spans(toks[i - 1], toks[i + 1])] = kind(
+                    op_string
+                )
 
                 i += 1
                 continue
@@ -388,15 +370,22 @@ def collect_operator_tokens_inplace(
     return toks, collected_spans
 
 
+AnyOp = ast.operator | ast.boolop | ast.cmpop
+
+
 class HoopyTransformer(ast.NodeTransformer):
     """Class responsible for AST node manipulation."""
 
     def __init__(
-        self, operator_nonce: str, custom_spans: Mapping[Spans, Operator]
+        self,
+        operator_nonce: str,
+        custom_spans: Mapping[Span, Operator],
+        custom_span_intervals: SpanTree[Operator],
     ) -> None:
         super().__init__()
         self.operator_nonce = operator_nonce
         self.custom_spans = custom_spans
+        self.span_tree = custom_span_intervals
 
     def visit_Module(self, node: ast.Module) -> Any:
         # visit child nodes first
@@ -442,29 +431,34 @@ class HoopyTransformer(ast.NodeTransformer):
             nodes.append(clone)
         return nodes
 
-    def matches_spans(self, left: ast.expr, right: ast.expr) -> Spans | None:
+    def matches_spans(self, left: ast.expr, right: ast.expr) -> Span | None:
         """
-        Returns the spans of the pair, if they have been registered. Else, None.
+        Returns the spans of the operator, if it has been registered. Else, None.
         """
-        spans = Spans(
+        span = Span(
             (left.end_lineno or 0, left.end_col_offset or 0),
             (right.lineno or 0, right.col_offset or 0),
         )
-        if spans not in self.custom_spans:
-            return None
-        return spans
+        if span in self.custom_spans:
+            return span
+        # The span is generated from the left and right endpoints of the binary
+        # operator operands. Because of this, it's guaranteed that there's no other
+        # AST node inside the span other than the operator token itself. If the input
+        # span fully encompasses any entry within the span tree, the entry must be
+        # an "expanded" form of the input span.
+        return self.span_tree.encompassing_span(span)
 
     def transform_pair(self, left: ast.expr, right: ast.expr) -> ast.expr | None:
         """
         Transforms a pair of nodes as an Infix
         """
         # TODO: verify the operator contents are correct as well
-        spans = self.matches_spans(left, right)
+        span = self.matches_spans(left, right)
         # an ?? operator would be nice here
         return (
             None
-            if spans is None
-            else self.custom_spans[spans].generate_and_copy_spans(left, right)
+            if span is None
+            else self.custom_spans[span].generate_and_copy_spans(left, right)
         )
 
     def transform_pair_or(
@@ -629,6 +623,8 @@ def transform(source: str) -> str:
         | collect_operator_tokens_inplace
     )()
 
+    tree = SpanTree(spans)
+
     return (
         Pipe(toks)
         | tokens.unlex
@@ -636,7 +632,7 @@ def transform(source: str) -> str:
         | (lambda toks: remove_accidental_indents(toks, nonce))
         | tokens.unlex
         | ast.parse
-        | HoopyTransformer(nonce, spans).visit
+        | HoopyTransformer(nonce, spans, tree).visit
         | ast.fix_missing_locations
         | ast.unparse
     )()

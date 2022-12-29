@@ -73,7 +73,7 @@ class TestCollectOperatorTokensInplace:
 
     def test_simple_application(self):
         self.expect_transformation(
-            "a b", "a * b", {transform.Spans((1, 2), (1, 3)): transform.Application()}
+            "a b", "a * b", {transform.Span((1, 1), (1, 4)): transform.Application()}
         )
 
     def test_strange_backticks(self):
@@ -81,9 +81,9 @@ class TestCollectOperatorTokensInplace:
             "a cd  `efg` `123` 1`b`c`2 `  `",
             "a * cd  * `123` 1*c`2 `  `",
             {
-                transform.Spans((1, 2), (1, 3)): transform.Application(),
-                transform.Spans((1, 8), (1, 9)): transform.Identifier("efg"),
-                transform.Spans((1, 17), (1, 18)): transform.Identifier("b"),
+                transform.Span((1, 1), (1, 4)): transform.Application(),
+                transform.Span((1, 6), (1, 10)): transform.Identifier("efg"),
+                transform.Span((1, 17), (1, 18)): transform.Identifier("b"),
             },
         )
 
@@ -92,11 +92,11 @@ class TestCollectOperatorTokensInplace:
             "(fs[0]) True x {1, 2, 3} None 'hi'",
             "(fs[0]) * True * x * {1, 2, 3} * None * 'hi'",
             {
-                transform.Spans((1, 8), (1, 9)): transform.Application(),
-                transform.Spans((1, 15), (1, 16)): transform.Application(),
-                transform.Spans((1, 19), (1, 20)): transform.Application(),
-                transform.Spans((1, 31), (1, 32)): transform.Application(),
-                transform.Spans((1, 38), (1, 39)): transform.Application(),
+                transform.Span((1, 7), (1, 10)): transform.Application(),
+                transform.Span((1, 14), (1, 17)): transform.Application(),
+                transform.Span((1, 18), (1, 21)): transform.Application(),
+                transform.Span((1, 30), (1, 33)): transform.Application(),
+                transform.Span((1, 37), (1, 40)): transform.Application(),
             },
         )
 
@@ -105,10 +105,10 @@ class TestCollectOperatorTokensInplace:
             "f <$> x <*> y <*> z ?? d",
             "f << x << y << z  and  d",
             {
-                transform.Spans((1, 2), (1, 4)): transform.Custom("<$>"),
-                transform.Spans((1, 7), (1, 9)): transform.Custom("<*>"),
-                transform.Spans((1, 12), (1, 14)): transform.Custom("<*>"),
-                transform.Spans((1, 18), (1, 21)): transform.Custom("??"),
+                transform.Span((1, 1), (1, 5)): transform.Custom("<$>"),
+                transform.Span((1, 6), (1, 10)): transform.Custom("<*>"),
+                transform.Span((1, 11), (1, 15)): transform.Custom("<*>"),
+                transform.Span((1, 16), (1, 23)): transform.Custom("??"),
             },
         )
 
@@ -117,8 +117,8 @@ class TestCollectOperatorTokensInplace:
             "f >>= pure x",
             "f << pure * x",
             {
-                transform.Spans(start=(1, 2), end=(1, 4)): transform.Inplace(op=">>="),
-                transform.Spans(start=(1, 10), end=(1, 11)): transform.Application(),
+                transform.Span(start=(1, 1), end=(1, 5)): transform.Inplace(op=">>="),
+                transform.Span(start=(1, 9), end=(1, 12)): transform.Application(),
             },
         )
 
@@ -146,14 +146,14 @@ class TestCollectOperatorTokensInplace:
 
     def test_valid_keyword_application(self):
         allowed = (
-            ("x None", "x * None", 2),  # left end, right end
-            ("x True", "x * True", 2),
-            ("True False", "True * False", 5),
-            ("NotImplemented x", "NotImplemented * x", 15),
+            ("x None", "x * None", 1),  # left end, right end
+            ("x True", "x * True", 1),
+            ("True False", "True * False", 4),
+            ("NotImplemented x", "NotImplemented * x", 14),
         )
         for a, b, c in allowed:
             self.expect_transformation(
-                a, b, {transform.Spans((1, c), (1, c + 1)): transform.Application()}
+                a, b, {transform.Span((1, c), (1, c + 3)): transform.Application()}
             )
 
     # TODO: more infix token tests
@@ -234,7 +234,7 @@ class TestStandardLibraryBreakage:
         self.expect_transformation(
             "x ::: 1",
             "x + 1",
-            {transform.Spans((1, 2), (1, 3)): transform.Custom(":::")},
+            {transform.Span((1, 1), (1, 4)): transform.Custom(":::")},
         )
 
     def test_string_concatenation(self):
@@ -243,3 +243,20 @@ class TestStandardLibraryBreakage:
 
     def test_ellipsis_blocks(self):
         self.expect_transformation("if x is ...: y", "if x is ...: y", {})
+
+
+class TestFullTransformation:
+    def test_simple_program(self):
+        source = "a = f <$> x <*> y ?? z"
+        expected = "from hoopy.magic import *\na = __operator__(__name__, '??')(__operator__(__name__, '<*>')(__operator__(__name__, '<$>')(f, x), y), z)"
+        assert transform.transform(source) == expected
+
+    def test_parenthesized_spans(self):
+        source = "(f) x"
+        expected = "from hoopy.magic import *\n__partial_apply__(f, x)"
+        assert transform.transform(source) == expected
+
+    def test_inline_inplace(self):
+        source = "a = x += y"
+        expected = "from hoopy.magic import *\na = __operator__(__name__, '+=')(x, y)"
+        assert transform.transform(source) == expected

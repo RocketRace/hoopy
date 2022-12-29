@@ -205,14 +205,13 @@ DISALLOWED_EXPRESSION_KEYWORDS = (
 def valid_application_boundary(left: TokenInfo, right: TokenInfo) -> bool:
     """Returns whether the left and right tokens belong to
     different expressions."""
-    print(left.start, left.end, right.start, right.end, left.string, right.string)
     return (
         left.exact_type in POSSIBLE_EXPRESSION_ENDERS
         and left.string not in DISALLOWED_EXPRESSION_KEYWORDS
         and right.exact_type in POSSIBLE_EXPRESSION_STARTERS
         and right.string not in DISALLOWED_EXPRESSION_KEYWORDS
     ) and not (
-        # This prevents implicit string concatenation otherwise
+        # This prevents implicit string concatenation
         left.type == token.STRING
         and right.type == token.STRING
     )

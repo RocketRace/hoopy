@@ -4,11 +4,12 @@ Generic utilities used by the library, with no operator-specific functionality
 from __future__ import annotations
 
 import ast
+from bisect import bisect
 import enum
 import token
 from dataclasses import dataclass
 from tokenize import TokenInfo
-from typing import Any, Callable, Iterable, ParamSpec, TypeAlias, TypeVar
+from typing import Any, Callable, Iterable, NamedTuple, ParamSpec, TypeAlias, TypeVar
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -77,7 +78,7 @@ def dbg(x: T) -> T:
     return x  # type: ignore
 
 
-# poorly typed, but pyright or mypy don't support proper bidirectional type inference
+# poorly typed, but static typing in python is weak in this case either way
 @dataclass
 class Pipe:
     __slots__ = ("value",)
@@ -88,3 +89,31 @@ class Pipe:
 
     def __call__(self) -> Any:
         return self.value
+
+
+class Span(NamedTuple):
+    """The bounds of an operator"""
+
+    start: tuple[int, int]
+    end: tuple[int, int]
+
+
+class SpanTree:
+    """Not actually a tree but can be used for binary search so the name is evocative"""
+
+    def __init__(self, spans: Iterable[Span]) -> None:
+        # even indices are starting points, odd indices are endpoints
+        self.spans = [endpoint for span in spans for endpoint in [span.start, span.end]]
+
+    def encompassing_span(self, span: Span) -> Span | None:
+        """Returns the span in this tree containing the input, or None if not found"""
+        start_row, start_col = span.start
+        # a fractional padding at the start means that an "equal" span is guaranteed to be contained within
+        start = (start_row, start_col - 0.5)
+
+        start_index = bisect(self.spans, start)
+        end_index = bisect(self.spans, span.end)
+
+        # This assumes that the input span is always "minimal", i.e. contains nothing else in the AST
+        if start_index < end_index:
+            return Span(self.spans[start_index], self.spans[end_index - 1])
