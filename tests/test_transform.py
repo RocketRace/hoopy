@@ -260,3 +260,9 @@ class TestFullTransformation:
         source = "a = x += y"
         expected = "from hoopy.magic import *\na = __operator__(__name__, '+=')(x, y)"
         assert transform.transform(source) == expected
+
+    def test_plain(self):
+        # Don't wrap builtin operators with an __operator__ call
+        source = "1 + 2 + 3"
+        expected = "from hoopy.magic import *\n1 + 2 + 3"
+        assert transform.transform(source) == expected
