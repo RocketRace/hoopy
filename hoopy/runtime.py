@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import inspect
 import operator
+import re
 from enum import IntEnum
 from types import ModuleType
 from typing import Any, Callable, Generic, Mapping, overload
@@ -238,7 +239,31 @@ def is_builtin_with_kind(op: str, kind: OperatorKind) -> bool:
     return op in BUILTIN_OPERATORS and BUILTIN_OPERATORS[op].kind is kind
 
 
-DISALLOWED_OPERATOR_STRINGS = {"...", ".", ":", "::", ":=", "=", "~", "->"}
+DISALLOWED_OPERATOR_PATTERNS = {
+    r"\.\.\.",
+    r"\.\.\.:",
+    r"\.",
+    r":",
+    r"::",
+    r":\+",
+    r":-",
+    r":~",
+    r"=\+",
+    r"=-",
+    r"=~",
+    r":=",
+    r"=",
+    r"~",
+    r"->",
+}
+
+
+def is_disallowed_operator(op: str) -> bool:
+    """Checks against the patterns above"""
+    return any(
+        re.fullmatch(pattern, op) is not None
+        for pattern in DISALLOWED_OPERATOR_PATTERNS
+    )
 
 
 class PartialFunction:

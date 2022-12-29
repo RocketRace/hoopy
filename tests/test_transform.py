@@ -1,4 +1,6 @@
 import tokenize
+import importlib
+import inspect
 import pytest
 from hoopy import tokens, transform, utils
 
@@ -155,3 +157,89 @@ class TestCollectOperatorTokensInplace:
             )
 
     # TODO: more infix token tests
+
+
+class TestStandardLibraryBreakage:
+    def expect_transformation(self, src, exp, spans):
+        toks = list(tokens.lex(src))
+        _, exp_spans = transform.collect_operator_tokens_inplace(toks)
+        out = tokens.unlex(toks)
+        assert out == exp
+        assert spans == exp_spans
+
+    def expect_no_operators_caught(self, src: str):
+        toks = list(tokens.lex(src))
+        _, spans = transform.collect_operator_tokens_inplace(toks)
+        # The output tokens will not be identical, but they should have the same semantic meaning
+        # print(*spans.items(), sep="\n")
+        assert all(isinstance(v, transform.Inplace) for v in spans.values())
+
+    def test_important_modules(self):
+        modules = [
+            "abc",
+            "argparse",
+            "ast",
+            "asyncio",
+            "codecs",
+            "collections",
+            "cProfile",
+            "ctypes",
+            "dataclasses",
+            "decimal",
+            "distutils",
+            "encodings",
+            "functools",
+            "gzip",
+            "hashlib",
+            "html",
+            "http",
+            "importlib",
+            "inspect",
+            "io",
+            "json",
+            "keyword",
+            "logging",
+            "opcode",
+            "os",
+            "pathlib",
+            "pickle",
+            "pprint",
+            "random",
+            "secrets",
+            "socket",
+            "sqlite3",
+            "subprocess",
+            "threading",
+            "token",
+            "types",
+            "typing",
+            "venv",
+            "weakref",
+            "webbrowser",
+            "zipfile",
+        ]
+        for module in (importlib.import_module(module) for module in modules):
+            try:
+                src = inspect.getsource(module)
+            except TypeError:
+                # The module is implemented in C and therefore doesn't have a source
+                pass
+            else:
+                self.expect_no_operators_caught(src)
+
+    # these test cases were caught thanks to above :)
+    def test_slice_transformation(self):
+        self.expect_transformation("x[:-1]", "x[:-1]", {})
+        self.expect_transformation("x[:~1]", "x[:~1]", {})
+        self.expect_transformation(
+            "x ::: 1",
+            "x + 1",
+            {transform.Spans((1, 2), (1, 3)): transform.Custom(":::")},
+        )
+
+    def test_string_concatenation(self):
+        self.expect_transformation("'a' 'b'", "'a' 'b'", {})
+        self.expect_transformation("('a'\\\n 'b')", "('a'\\\n 'b')", {})
+
+    def test_ellipsis_blocks(self):
+        self.expect_transformation("if x is ...: y", "if x is ...: y", {})

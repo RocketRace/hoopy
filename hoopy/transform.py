@@ -18,7 +18,7 @@ from typing import Any, Callable, Iterable, Literal, Mapping, NamedTuple, Sequen
 
 from . import tokens
 from .runtime import (
-    DISALLOWED_OPERATOR_STRINGS,
+    is_disallowed_operator,
     OperatorKind,
     is_builtin_with_kind,
     operator_proxy_for,
@@ -84,7 +84,7 @@ def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
             prev = tok
 
         op_string = "".join(operator)
-        if op_string in DISALLOWED_OPERATOR_STRINGS:
+        if is_disallowed_operator(op_string):
             return None
 
     return f"__operator_{nonce}_{''.join(f'{ord(c):x}' for c in op_string)}"
@@ -286,7 +286,7 @@ def collect_operator_tokens_inplace(
             case [
                 TokenInfo() as first,
                 TokenInfo() as second,
-            ] if tokens.contains_expression_boundary(first, second):
+            ] if tokens.valid_application_boundary(first, second):
                 tokens.insert_inplace(
                     toks, i + 1, token.OP, DEFAULT_OPERATOR, left_offset=1
                 )
@@ -345,9 +345,8 @@ def collect_operator_tokens_inplace(
                     break
 
             op_string = "".join(tok.string for tok in operator)
-            if (
-                op_string not in DISALLOWED_OPERATOR_STRINGS
-                and not is_builtin_with_kind(op_string, OperatorKind.Symbolic)
+            if not is_disallowed_operator(op_string) and not is_builtin_with_kind(
+                op_string, OperatorKind.Symbolic
             ):
 
                 tokens.remove_inplace(toks, i, i + len(operator))
