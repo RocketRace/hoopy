@@ -148,8 +148,8 @@ def mangle_operator_objects_inplace(
 
 
 class Spans(NamedTuple):
-    left: tuple[int, int]
-    right: tuple[int, int]
+    start: tuple[int, int]
+    end: tuple[int, int]
 
     def __bool__(self) -> Literal[True]:
         return True
@@ -180,7 +180,13 @@ class Application(OperatorBase):
         given values of `left` and `right`
         """
         return ast.Call(
-            func=ast.Name("__partial_apply__"), args=[left, right], keywords=[]
+            func=ast.Name("__partial_apply__"),
+            args=[left, right],
+            keywords=[],
+            lineno=left.lineno,
+            col_offset=left.col_offset,
+            end_lineno=right.end_lineno,
+            end_col_offset=right.end_col_offset,
         )
 
 
@@ -196,7 +202,13 @@ class Identifier(OperatorBase):
         given values of `name`, `left` and `right`.
         """
         return ast.Call(
-            func=ast.Name(self.name, ctx=ast.Load()), args=[left, right], keywords=[]
+            func=ast.Name(self.name, ctx=ast.Load()),
+            args=[left, right],
+            keywords=[],
+            lineno=left.lineno,
+            col_offset=left.col_offset,
+            end_lineno=right.end_lineno,
+            end_col_offset=right.end_col_offset,
         )
 
 
@@ -219,6 +231,10 @@ class Custom(OperatorBase):
             ),
             args=[left, right],
             keywords=[],
+            lineno=left.lineno,
+            col_offset=left.col_offset,
+            end_lineno=right.end_lineno,
+            end_col_offset=right.end_col_offset,
         )
 
 
@@ -238,6 +254,14 @@ class Inplace(OperatorBase):
 Operator = Inplace | Custom | Identifier | Application
 
 DEFAULT_OPERATOR = "*"
+
+
+def compute_new_spans(neighbor: TokenInfo, left_offset: int, op_str: str) -> Spans:
+    """Fetches the start & end points for a newly created token based on its leftmost neighbor"""
+    row, col = neighbor.end
+    left = (row, col + left_offset)
+    right = (row, col + left_offset + len(op_str))
+    return Spans(left, right)
 
 
 def collect_operator_tokens_inplace(
@@ -260,14 +284,15 @@ def collect_operator_tokens_inplace(
         # TODO: handle newline-delimited application by keeping a stack of [](){}
         match toks[i : i + 2]:
             case [
-                TokenInfo(end=left) as first,
+                TokenInfo() as first,
                 TokenInfo() as second,
             ] if tokens.contains_expression_boundary(first, second):
                 tokens.insert_inplace(
                     toks, i + 1, token.OP, DEFAULT_OPERATOR, left_offset=1
                 )
-                right = toks[i + 2].start
-                collected_spans[Spans(left, right)] = Application()
+                collected_spans[
+                    compute_new_spans(first, left_offset=1, op_str=DEFAULT_OPERATOR)
+                ] = Application()
                 # 2 since we added 1 extra token we don't need to process anymore
                 i += 2
                 continue
@@ -277,7 +302,7 @@ def collect_operator_tokens_inplace(
         # checking 1 token on each end for lookaround
         match toks[i - 1 : i + 4]:
             case [
-                TokenInfo(end=(left_row, left_col)),
+                TokenInfo(end=(left_row, left_col)) as first,
                 TokenInfo(string="`", start=(_, start_col)),
                 TokenInfo(type=token.NAME, string=string),
                 TokenInfo(string="`"),
@@ -295,7 +320,11 @@ def collect_operator_tokens_inplace(
                     left_offset=offset,
                     right_offset=-offset,
                 )
-                collected_spans[Spans((left_row, left_col), right)] = Identifier(string)
+                collected_spans[
+                    compute_new_spans(
+                        first, left_offset=offset, op_str=DEFAULT_OPERATOR
+                    )
+                ] = Identifier(string)
                 i += 1
                 continue
 
@@ -322,7 +351,7 @@ def collect_operator_tokens_inplace(
             ):
 
                 tokens.remove_inplace(toks, i, i + len(operator))
-                left_row, left_col = toks[i - 1].end
+                left_col = toks[i - 1].end[1]
                 offset = operator[0].start[1] - left_col
 
                 proxy = operator_proxy_for(op_string)
@@ -338,7 +367,6 @@ def collect_operator_tokens_inplace(
                     left_offset=offset + bonus,
                     right_offset=-offset + bonus,
                 )
-                right = toks[i + 1].start
 
                 kind = (
                     Inplace
@@ -346,7 +374,11 @@ def collect_operator_tokens_inplace(
                     else Custom
                 )
 
-                collected_spans[Spans((left_row, left_col), right)] = kind(op_string)
+                collected_spans[
+                    compute_new_spans(
+                        toks[i - 1], left_offset=offset + bonus, op_str=proxy
+                    )
+                ] = kind(op_string)
 
                 i += 1
                 continue

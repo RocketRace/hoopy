@@ -1,13 +1,13 @@
 import tokenize
 import pytest
-from hoopy import tokens, transform
+from hoopy import tokens, transform, utils
 
 
 class TestMangleOperatorObjectsInplace:
     def expect_transformation(self, src, exp):
         toks = list(tokens.lex(src))
         transform.mangle_operator_objects_inplace(toks, "nonce")
-        tokens.pretty_print(toks)
+        utils.print_token(toks)
         out = tokens.unlex(toks)
         assert out == exp
 
@@ -69,13 +69,18 @@ class TestCollectOperatorTokensInplace:
         assert out == exp
         assert spans == exp_spans
 
+    def test_simple_application(self):
+        self.expect_transformation(
+            "a b", "a * b", {transform.Spans((1, 2), (1, 3)): transform.Application()}
+        )
+
     def test_strange_backticks(self):
         self.expect_transformation(
             "a cd  `efg` `123` 1`b`c`2 `  `",
             "a * cd  * `123` 1*c`2 `  `",
             {
-                transform.Spans((1, 1), (1, 4)): transform.Application(),
-                transform.Spans((1, 6), (1, 10)): transform.Identifier("efg"),
+                transform.Spans((1, 2), (1, 3)): transform.Application(),
+                transform.Spans((1, 8), (1, 9)): transform.Identifier("efg"),
                 transform.Spans((1, 17), (1, 18)): transform.Identifier("b"),
             },
         )
@@ -85,11 +90,11 @@ class TestCollectOperatorTokensInplace:
             "(fs[0]) True x {1, 2, 3} None 'hi'",
             "(fs[0]) * True * x * {1, 2, 3} * None * 'hi'",
             {
-                transform.Spans((1, 7), (1, 10)): transform.Application(),
-                transform.Spans((1, 14), (1, 17)): transform.Application(),
-                transform.Spans((1, 18), (1, 21)): transform.Application(),
-                transform.Spans((1, 30), (1, 33)): transform.Application(),
-                transform.Spans((1, 37), (1, 40)): transform.Application(),
+                transform.Spans((1, 8), (1, 9)): transform.Application(),
+                transform.Spans((1, 15), (1, 16)): transform.Application(),
+                transform.Spans((1, 19), (1, 20)): transform.Application(),
+                transform.Spans((1, 31), (1, 32)): transform.Application(),
+                transform.Spans((1, 38), (1, 39)): transform.Application(),
             },
         )
 
@@ -98,10 +103,20 @@ class TestCollectOperatorTokensInplace:
             "f <$> x <*> y <*> z ?? d",
             "f << x << y << z  and  d",
             {
-                transform.Spans((1, 1), (1, 5)): transform.Custom("<$>"),
-                transform.Spans((1, 6), (1, 10)): transform.Custom("<*>"),
-                transform.Spans((1, 11), (1, 15)): transform.Custom("<*>"),
-                transform.Spans((1, 16), (1, 23)): transform.Custom("??"),
+                transform.Spans((1, 2), (1, 4)): transform.Custom("<$>"),
+                transform.Spans((1, 7), (1, 9)): transform.Custom("<*>"),
+                transform.Spans((1, 12), (1, 14)): transform.Custom("<*>"),
+                transform.Spans((1, 18), (1, 21)): transform.Custom("??"),
+            },
+        )
+
+    def test_monad(self):
+        self.expect_transformation(
+            "f >>= pure x",
+            "f << pure * x",
+            {
+                transform.Spans(start=(1, 2), end=(1, 4)): transform.Inplace(op=">>="),
+                transform.Spans(start=(1, 10), end=(1, 11)): transform.Application(),
             },
         )
 
@@ -129,14 +144,14 @@ class TestCollectOperatorTokensInplace:
 
     def test_valid_keyword_application(self):
         allowed = (
-            ("x None", "x * None", 1),  # left end, right end
-            ("x True", "x * True", 1),
-            ("True False", "True * False", 4),
-            ("NotImplemented x", "NotImplemented * x", 14),
+            ("x None", "x * None", 2),  # left end, right end
+            ("x True", "x * True", 2),
+            ("True False", "True * False", 5),
+            ("NotImplemented x", "NotImplemented * x", 15),
         )
         for a, b, c in allowed:
             self.expect_transformation(
-                a, b, {transform.Spans((1, c), (1, c + 3)): transform.Application()}
+                a, b, {transform.Spans((1, c), (1, c + 1)): transform.Application()}
             )
 
     # TODO: more infix token tests

@@ -167,14 +167,6 @@ def fix_spans(toks: Sequence[TokenInfo]) -> Sequence[TokenInfo]:
     return out
 
 
-def pretty_print(toks: Iterable[TokenInfo]) -> None:
-    for tok in toks:
-        _, string, start, end, _ = tok
-        type_num = tok.exact_type
-        type = token.tok_name[type_num]
-        print(f"TokenInfo({type=!s}, {string=}, {start=}, {end=})")
-
-
 def remove_error_whitespace_inplace(toks: list[TokenInfo]) -> None:
     """Filters out whitespace tokens rejected by the Python lexer."""
     for i in reversed(range(len(toks))):
