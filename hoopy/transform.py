@@ -7,14 +7,13 @@ import abc
 
 import ast
 import copy
-import functools
 import itertools
 import keyword
 import random
 import token
 from dataclasses import dataclass
 from tokenize import TokenInfo
-from typing import Any, Callable, Iterable, Literal, Mapping, NamedTuple, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from . import tokens
 from .runtime import (
@@ -23,7 +22,7 @@ from .runtime import (
     is_builtin_with_kind,
     operator_proxy_for,
 )
-from .utils import Pipe, Span, SpanTree
+from .utils import T, U, Pipe, Span, SpanTree
 
 
 def generate_import(module: str | None, level: int, op: str) -> ast.stmt:
@@ -283,6 +282,8 @@ def collect_operator_tokens_inplace(
                 # 2 since we added 1 extra token we don't need to process anymore
                 i += 2
                 continue
+            case _:
+                pass
 
         # Infixified identifiers:
         # a 3-token pattern replaced with a 1-token pattern,
@@ -311,6 +312,8 @@ def collect_operator_tokens_inplace(
                 ] = Identifier(string)
                 i += 1
                 continue
+            case _:
+                pass
 
         # Custom infix operators can be of variable width
         # This also catches in-place operators
@@ -427,6 +430,8 @@ class HoopyTransformer(ast.NodeTransformer):
         match stmts:
             case [ast.Expr(value=ast.Constant(value=str()))]:
                 offset += 1
+            case _:
+                pass
 
         # skip past every __future__ import
         while offset < len(stmts):
@@ -440,9 +445,9 @@ class HoopyTransformer(ast.NodeTransformer):
         return ast.Module(body=stmts, type_ignores=node.type_ignores)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:
-        # TODO: is generic_visit required here?
+        node = self.generic_visit(node)
         prev = 0
-        nodes = []
+        nodes: list[ast.stmt] = []
         for i, alias in enumerate(node.names):
             demangled = demangle_operator_string(alias.name, self.operator_nonce)
             if demangled is not None:
@@ -495,7 +500,7 @@ class HoopyTransformer(ast.NodeTransformer):
         it is ,,, functional
         """
 
-        def inner(left, right):
+        def inner(left: ast.expr, right: ast.expr) -> ast.expr:
             return self.transform_pair(left, right) or otherwise(left, right)
 
         return inner
@@ -642,7 +647,7 @@ def remove_accidental_indents(
 
     This is kind of a hack, because I really don't want to write a Python parser.
     """
-    out = []
+    out: list[TokenInfo] = []
     # I really don't like this imperative style
     last = None
     indents = 0
@@ -670,13 +675,20 @@ def remove_accidental_indents(
 
 def transform(source: str) -> str:
     """Performs the Hoopy transformations on an input program."""
+
     nonce = str(random.randint(0, 2**32 - 1))
+
+    def with_nonce(fn: Callable[[T, str], U]) -> Callable[[T], U]:
+        def inner(x: T) -> U:
+            return fn(x, nonce)
+
+        return inner
 
     toks, spans = (
         Pipe(source)
         | tokens.lex
         | list
-        | (lambda toks: mangle_operator_objects_inplace(toks, nonce))
+        | with_nonce(mangle_operator_objects_inplace)
         | collect_operator_tokens_inplace
     )()
 
@@ -686,7 +698,7 @@ def transform(source: str) -> str:
         Pipe(toks)
         | tokens.unlex
         | tokens.lex
-        | (lambda toks: remove_accidental_indents(toks, nonce))
+        | with_nonce(remove_accidental_indents)
         | tokens.unlex
         | ast.parse
         | HoopyTransformer(nonce, spans, tree).visit

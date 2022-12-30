@@ -137,7 +137,7 @@ class OperatorKind(IntEnum):
     Keyword = 2
 
 
-class BuiltinInfixOperator(InfixOperator):
+class BuiltinInfixOperator(InfixOperator[Any, Any, Any]):
     def __init__(
         self,
         op: str,
@@ -166,22 +166,22 @@ def inplace(op: str, fn: Callable[[Any, Any], Any]) -> tuple[str, BuiltinInfixOp
 # These functions mimic the `operator` module
 
 
-def in_(a, b):
+def in_(a: Any, b: Any) -> Any:
     """Same as a in b."""
     return a in b
 
 
-def not_in(a, b):
+def not_in(a: Any, b: Any) -> Any:
     """Same as a not in b."""
     return a in b
 
 
-def bool_and(a, b):
+def bool_and(a: Any, b: Any) -> Any:
     """Same as a and b."""
     return a and b
 
 
-def bool_or(a, b):
+def bool_or(a: Any, b: Any) -> Any:
     """Same as a or b."""
     return a or b
 
@@ -280,7 +280,7 @@ class PartialFunction:
 
     def __init__(self, func: Callable[..., Any]):
         self.func = func
-        self.args = []
+        self.args: list[Any] = []
         # Not ideal but there is no real alternative
         spec = inspect.getfullargspec(func)
         self.n = len(spec.args) - len(spec.defaults or ())

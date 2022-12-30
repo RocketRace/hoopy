@@ -2,12 +2,13 @@ import ast
 import tokenize
 import importlib
 import inspect
+from typing import Mapping
 import pytest
 from hoopy import tokens, transform, utils
 
 
 class TestMangleOperatorObjectsInplace:
-    def expect_transformation(self, src, exp):
+    def expect_transformation(self, src: str, exp: str):
         toks = list(tokens.lex(src))
         transform.mangle_operator_objects_inplace(toks, "nonce")
         utils.print_token(toks)
@@ -65,7 +66,9 @@ class TestMangleOperatorObjectsInplace:
 
 
 class TestCollectOperatorTokensInplace:
-    def expect_transformation(self, src, exp, spans):
+    def expect_transformation(
+        self, src: str, exp: str, spans: Mapping[utils.Span, transform.OperatorBase]
+    ):
         toks = list(tokens.lex(src))
         _, exp_spans = transform.collect_operator_tokens_inplace(toks)
         out = tokens.unlex(toks)
@@ -161,10 +164,12 @@ class TestCollectOperatorTokensInplace:
 
 
 class TestStandardLibraryBreakage:
-    def expect_no_transformation(self, src):
+    def expect_no_transformation(self, src: str):
         return self.expect_transformation(src, src, {})
 
-    def expect_transformation(self, src, exp, spans):
+    def expect_transformation(
+        self, src: str, exp: str, spans: Mapping[utils.Span, transform.OperatorBase]
+    ):
         toks = list(tokens.lex(src))
         _, exp_spans = transform.collect_operator_tokens_inplace(toks)
         out = tokens.unlex(toks)
