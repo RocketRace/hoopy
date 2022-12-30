@@ -161,6 +161,9 @@ class TestCollectOperatorTokensInplace:
 
 
 class TestStandardLibraryBreakage:
+    def expect_no_transformation(self, src):
+        return self.expect_transformation(src, src, {})
+
     def expect_transformation(self, src, exp, spans):
         toks = list(tokens.lex(src))
         _, exp_spans = transform.collect_operator_tokens_inplace(toks)
@@ -176,6 +179,7 @@ class TestStandardLibraryBreakage:
         assert all(isinstance(v, transform.Inplace) for v in spans.values())
 
     def expect_round_trip_equivalance(self, src: str):
+        # The header is always present in transformed code, ignore it
         out = transform.transform(src).replace("from hoopy.magic import *", "")
         assert ast.unparse(ast.parse(out)) == ast.unparse(ast.parse(src))
 
@@ -235,8 +239,8 @@ class TestStandardLibraryBreakage:
 
     # these test cases were caught thanks to above :)
     def test_slice_transformation(self):
-        self.expect_transformation("x[:-1]", "x[:-1]", {})
-        self.expect_transformation("x[:~1]", "x[:~1]", {})
+        self.expect_no_transformation("x[:-1]")
+        self.expect_no_transformation("x[:~1]")
         self.expect_transformation(
             "x ::: 1",
             "x + 1",
@@ -244,11 +248,19 @@ class TestStandardLibraryBreakage:
         )
 
     def test_string_concatenation(self):
-        self.expect_transformation("'a' 'b'", "'a' 'b'", {})
-        self.expect_transformation("('a'\\\n 'b')", "('a'\\\n 'b')", {})
+        self.expect_no_transformation("'a' 'b'")
+        self.expect_no_transformation("('a'\\\n 'b')")
 
     def test_ellipsis_blocks(self):
-        self.expect_transformation("if x is ...: y", "if x is ...: y", {})
+        self.expect_no_transformation("if x is ...: y")
+
+    def test_short_circuit(self):
+        # short circuiting chains should maintain their original semantics
+        self.expect_no_transformation("x and y and z")
+
+    def test_nested_short_circuit(self):
+        # ensure boolops maintain span information
+        self.expect_no_transformation("(x and y) and (z and w)")
 
 
 class TestFullTransformation:
@@ -281,14 +293,4 @@ class TestFullTransformation:
         # Don't wrap builtin operators with an __operator__ call
         source = "1 + 2 + 3"
         expected = "from hoopy.magic import *\n1 + 2 + 3"
-        assert transform.transform(source) == expected
-
-    def test_short_circuit(self):
-        source = "x and y and z"
-        expected = "from hoopy.magic import *\nx and y and z"
-        assert transform.transform(source) == expected
-
-    def test_nested_short_circuit(self):
-        source = "(x and y) and (z and w)"
-        expected = "from hoopy.magic import *\n(x and y) and (z and w)"
         assert transform.transform(source) == expected

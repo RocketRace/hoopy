@@ -370,9 +370,6 @@ def collect_operator_tokens_inplace(
     return toks, collected_spans
 
 
-AnyOp = ast.operator | ast.boolop | ast.cmpop
-
-
 def builtin_to_ast_op(op: str) -> ast.operator:
     """Converts from a string to the appropriate operator node"""
     match op:
@@ -462,32 +459,13 @@ class HoopyTransformer(ast.NodeTransformer):
             nodes.append(clone)
         return nodes
 
-    def get_start_loc(self, node: ast.expr) -> tuple[int, int]:
-        """Fetches opening AST span information. This is, for some reason,
-        not supplied by every AST node.
-        """
-        if isinstance(node, ast.BoolOp):
-            return self.get_end_loc(node.values[0])
-        else:
-            return (node.lineno or 0, node.col_offset or 0)
-
-    def get_end_loc(self, node: ast.expr) -> tuple[int, int]:
-        """Fetches closing AST span information. This is, for some reason,
-        not supplied by every AST node.
-        """
-        if isinstance(node, ast.BoolOp):
-            return self.get_end_loc(node.values[-1])
-        else:
-            return (node.end_lineno or 0, node.end_col_offset or 0)
-
     def matches_spans(self, left: ast.expr, right: ast.expr) -> Span | None:
         """
         Returns the spans of the operator, if it has been registered. Else, None.
         """
-        # boolop nodes have no individual span information for SOME reason
         span = Span(
-            self.get_end_loc(left),
-            self.get_start_loc(right),
+            (left.end_lineno or 0, left.end_col_offset or 0),
+            (right.lineno or 0, right.col_offset or 0),
         )
         if span in self.custom_spans:
             return span
@@ -539,8 +517,6 @@ class HoopyTransformer(ast.NodeTransformer):
     def visit_BoolOp(self, node: ast.BoolOp) -> Any:
         # Boolean operands are stored as a list, for
         # the purpose of short circuiting
-        #
-        # TODO: respect that
         node = self.generic_visit(node)
 
         values = node.values.copy()
@@ -557,7 +533,14 @@ class HoopyTransformer(ast.NodeTransformer):
         if len(values) == 1:
             return values[0]
         else:
-            return ast.BoolOp(node.op, values)
+            return ast.BoolOp(
+                node.op,
+                values,
+                lineno=values[0].lineno,
+                col_offset=values[0].col_offset,
+                end_lineno=values[-1].end_lineno,
+                end_col_offset=values[-1].end_col_offset,
+            )
 
     def visit_Compare(self, node: ast.Compare) -> Any:
         node = self.generic_visit(node)
