@@ -373,14 +373,45 @@ def collect_operator_tokens_inplace(
 AnyOp = ast.operator | ast.boolop | ast.cmpop
 
 
+def builtin_to_ast_op(op: str) -> ast.operator:
+    """Converts from a string to the appropriate operator node"""
+    match op:
+        case "+" | "+=":
+            return ast.Add()
+        case "-" | "-=":
+            return ast.Sub()
+        case "*" | "*=":
+            return ast.Mult()
+        case "/" | "/=":
+            return ast.Div()
+        case "//" | "//=":
+            return ast.FloorDiv()
+        case "%" | "%=":
+            return ast.Mod()
+        case "**" | "**=":
+            return ast.Pow()
+        case "<<" | "<<=":
+            return ast.LShift()
+        case ">>" | ">>=":
+            return ast.RShift()
+        case "|" | "|=":
+            return ast.BitOr()
+        case "^" | "^=":
+            return ast.BitXor()
+        case "@" | "@=":
+            return ast.MatMult()
+        case _:
+            raise ValueError(f"Invalid operator '{op}'")
+
+
 class HoopyTransformer(ast.NodeTransformer):
-    """Class responsible for AST node manipulation."""
+    """Class responsible for most of the Hoopy codegen."""
 
     def __init__(
         self,
         operator_nonce: str,
         custom_spans: Mapping[Span, Operator],
-        custom_span_intervals: SpanTree[Operator],
+        custom_span_intervals: SpanTree,
     ) -> None:
         super().__init__()
         self.operator_nonce = operator_nonce
@@ -431,13 +462,32 @@ class HoopyTransformer(ast.NodeTransformer):
             nodes.append(clone)
         return nodes
 
+    def get_start_loc(self, node: ast.expr) -> tuple[int, int]:
+        """Fetches opening AST span information. This is, for some reason,
+        not supplied by every AST node.
+        """
+        if isinstance(node, ast.BoolOp):
+            return self.get_end_loc(node.values[0])
+        else:
+            return (node.lineno or 0, node.col_offset or 0)
+
+    def get_end_loc(self, node: ast.expr) -> tuple[int, int]:
+        """Fetches closing AST span information. This is, for some reason,
+        not supplied by every AST node.
+        """
+        if isinstance(node, ast.BoolOp):
+            return self.get_end_loc(node.values[-1])
+        else:
+            return (node.end_lineno or 0, node.end_col_offset or 0)
+
     def matches_spans(self, left: ast.expr, right: ast.expr) -> Span | None:
         """
         Returns the spans of the operator, if it has been registered. Else, None.
         """
+        # boolop nodes have no individual span information for SOME reason
         span = Span(
-            (left.end_lineno or 0, left.end_col_offset or 0),
-            (right.lineno or 0, right.col_offset or 0),
+            self.get_end_loc(left),
+            self.get_start_loc(right),
         )
         if span in self.custom_spans:
             return span
@@ -452,7 +502,6 @@ class HoopyTransformer(ast.NodeTransformer):
         """
         Transforms a pair of nodes as an Infix
         """
-        # TODO: verify the operator contents are correct as well
         span = self.matches_spans(left, right)
         # an ?? operator would be nice here
         return (
@@ -494,13 +543,21 @@ class HoopyTransformer(ast.NodeTransformer):
         # TODO: respect that
         node = self.generic_visit(node)
 
-        def otherwise(left: ast.expr, right: ast.expr):
-            clone = copy.deepcopy(node)
-            clone.values = [left, right]
-            return clone
+        values = node.values.copy()
+        i = 0
+        while i < len(values) - 1:
+            left = values[i]
+            right = values[i + 1]
+            result = self.transform_pair(left, right)
+            if result is None:
+                i += 1
+            else:
+                values[i : i + 2] = [result]
 
-        # re-merge short-circuiting?
-        return functools.reduce(self.transform_pair_or(otherwise), node.values)
+        if len(values) == 1:
+            return values[0]
+        else:
+            return ast.BoolOp(node.op, values)
 
     def visit_Compare(self, node: ast.Compare) -> Any:
         node = self.generic_visit(node)
@@ -577,6 +634,29 @@ class HoopyTransformer(ast.NodeTransformer):
     #     return super().visit_Nonlocal(node)
 
 
+class NodeOptimizer(ast.NodeTransformer):
+    """Converts any inefficient AST forms resulting from the previous transformations
+    into more optimal representations.
+    """
+
+    # Single-expression statement
+    def visit_Expr(self, node: ast.Expr) -> Any:
+        node = self.generic_visit(node)
+        # Check if we converted an in-place binary operator from statement to expression form
+        # if we did, turn it back into a statement to reduce the overhead
+        match node.value:
+            case ast.Call(
+                func=ast.Call(
+                    func=ast.Name("__operator__"),
+                    args=[ast.Name("__name__"), ast.Constant(value=op)],
+                ),
+                args=[target, x],  # binary operator
+            ) if is_builtin_with_kind(op, OperatorKind.Inplace):
+                return ast.AugAssign(target=target, op=builtin_to_ast_op(op), value=x)
+            case _:
+                return node
+
+
 def remove_accidental_indents(
     toks: Iterable[TokenInfo], nonce: str
 ) -> Sequence[TokenInfo]:
@@ -633,6 +713,7 @@ def transform(source: str) -> str:
         | tokens.unlex
         | ast.parse
         | HoopyTransformer(nonce, spans, tree).visit
+        | NodeOptimizer().visit
         | ast.fix_missing_locations
         | ast.unparse
     )()

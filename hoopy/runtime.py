@@ -353,4 +353,4 @@ OPERATOR_PROXIES = {
 def operator_proxy_for(string: str) -> str:
     """Returns the simple operator string associated with the given
     more complex operator string."""
-    return OPERATOR_PROXIES[string[0]]
+    return OPERATOR_PROXIES[string[-1]]

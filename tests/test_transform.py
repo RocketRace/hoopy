@@ -1,3 +1,4 @@
+import ast
 import tokenize
 import importlib
 import inspect
@@ -115,7 +116,7 @@ class TestCollectOperatorTokensInplace:
     def test_monad(self):
         self.expect_transformation(
             "f >>= pure x",
-            "f << pure * x",
+            "f == pure * x",
             {
                 transform.Span(start=(1, 1), end=(1, 5)): transform.Inplace(op=">>="),
                 transform.Span(start=(1, 9), end=(1, 12)): transform.Application(),
@@ -167,12 +168,16 @@ class TestStandardLibraryBreakage:
         assert out == exp
         assert spans == exp_spans
 
-    def expect_no_operators_caught(self, src: str):
+    def expect_only_inplace_ops(self, src: str):
         toks = list(tokens.lex(src))
         _, spans = transform.collect_operator_tokens_inplace(toks)
-        # The output tokens will not be identical, but they should have the same semantic meaning
+        # The output tokens may not be identical, but they should have the same semantic meaning
         # print(*spans.items(), sep="\n")
         assert all(isinstance(v, transform.Inplace) for v in spans.values())
+
+    def expect_round_trip_equivalance(self, src: str):
+        out = transform.transform(src).replace("from hoopy.magic import *", "")
+        assert ast.unparse(ast.parse(out)) == ast.unparse(ast.parse(src))
 
     def test_important_modules(self):
         modules = [
@@ -225,7 +230,8 @@ class TestStandardLibraryBreakage:
                 # The module is implemented in C and therefore doesn't have a source
                 pass
             else:
-                self.expect_no_operators_caught(src)
+                self.expect_only_inplace_ops(src)
+                self.expect_round_trip_equivalance(src)
 
     # these test cases were caught thanks to above :)
     def test_slice_transformation(self):
@@ -261,8 +267,28 @@ class TestFullTransformation:
         expected = "from hoopy.magic import *\na = __operator__(__name__, '+=')(x, y)"
         assert transform.transform(source) == expected
 
+    def test_normal_inplace(self):
+        source = "x += 2"
+        expected = "from hoopy.magic import *\nx += 2"
+        assert transform.transform(source) == expected
+
+    def test_nested_normal_inplace(self):
+        source = "if x:\n    x += 1"
+        expected = "from hoopy.magic import *\nif x:\n    x += 1"
+        assert transform.transform(source) == expected
+
     def test_plain(self):
         # Don't wrap builtin operators with an __operator__ call
         source = "1 + 2 + 3"
         expected = "from hoopy.magic import *\n1 + 2 + 3"
+        assert transform.transform(source) == expected
+
+    def test_short_circuit(self):
+        source = "x and y and z"
+        expected = "from hoopy.magic import *\nx and y and z"
+        assert transform.transform(source) == expected
+
+    def test_nested_short_circuit(self):
+        source = "(x and y) and (z and w)"
+        expected = "from hoopy.magic import *\n(x and y) and (z and w)"
         assert transform.transform(source) == expected
