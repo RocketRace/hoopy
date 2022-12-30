@@ -572,6 +572,23 @@ class HoopyTransformer(ast.NodeTransformer):
             clone.comparators = cmps
             return clone
 
+    # Single-expression statements
+    def visit_Expr(self, node: ast.Expr) -> Any:
+        node = self.generic_visit(node)
+        # Check if we converted an in-place binary operator from statement to expression form
+        # if we did, turn it back into a statement to reduce the overhead
+        match node.value:
+            case ast.Call(
+                func=ast.Call(
+                    func=ast.Name("__operator__"),
+                    args=[ast.Name("__name__"), ast.Constant(value=op)],
+                ),
+                args=[target, x],  # binary operator
+            ) if is_builtin_with_kind(op, OperatorKind.Inplace):
+                return ast.AugAssign(target=target, op=builtin_to_ast_op(op), value=x)
+            case _:
+                return node
+
     # # for better diagnostics
     # # these are all the AST nodes that refer to identifiers
     # # TODO: perhaps directly go through each exposed node in `ast`,
@@ -615,29 +632,6 @@ class HoopyTransformer(ast.NodeTransformer):
 
     # def visit_Nonlocal(self, node: ast.Nonlocal) -> Any:
     #     return super().visit_Nonlocal(node)
-
-
-class NodeOptimizer(ast.NodeTransformer):
-    """Converts any inefficient AST forms resulting from the previous transformations
-    into more optimal representations.
-    """
-
-    # Single-expression statement
-    def visit_Expr(self, node: ast.Expr) -> Any:
-        node = self.generic_visit(node)
-        # Check if we converted an in-place binary operator from statement to expression form
-        # if we did, turn it back into a statement to reduce the overhead
-        match node.value:
-            case ast.Call(
-                func=ast.Call(
-                    func=ast.Name("__operator__"),
-                    args=[ast.Name("__name__"), ast.Constant(value=op)],
-                ),
-                args=[target, x],  # binary operator
-            ) if is_builtin_with_kind(op, OperatorKind.Inplace):
-                return ast.AugAssign(target=target, op=builtin_to_ast_op(op), value=x)
-            case _:
-                return node
 
 
 def remove_accidental_indents(
@@ -696,7 +690,6 @@ def transform(source: str) -> str:
         | tokens.unlex
         | ast.parse
         | HoopyTransformer(nonce, spans, tree).visit
-        | NodeOptimizer().visit
         | ast.fix_missing_locations
         | ast.unparse
     )()
