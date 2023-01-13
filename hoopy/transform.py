@@ -422,8 +422,8 @@ class HoopyTransformer(ast.NodeTransformer):
         stmts = node.body
         # this evaluates to 0 or 1 depending on if there's a module docstring
         offset = 0
-        match stmts:
-            case [ast.Expr(value=ast.Constant(value=str()))]:
+        match stmts[0]:
+            case ast.Expr(value=ast.Constant(value=str())):
                 offset += 1
             case _:
                 pass

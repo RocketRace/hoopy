@@ -160,8 +160,6 @@ class TestCollectOperatorTokensInplace:
                 a, b, {transform.Span((1, c), (1, c + 3)): transform.Application()}
             )
 
-    # TODO: more infix token tests
-
 
 class TestStandardLibraryBreakage:
     def expect_no_transformation(self, src: str):
@@ -298,4 +296,36 @@ class TestFullTransformation:
         # Don't wrap builtin operators with an __operator__ call
         source = "1 + 2 + 3"
         expected = "from hoopy.magic import *\n1 + 2 + 3"
+        assert transform.transform(source) == expected
+
+    def test_operator_imports(self):
+        source = "from x import (+)"
+        expected = (
+            "from hoopy.magic import *\n__import_operator__(__name__, 'x', 0, '+')"
+        )
+        assert transform.transform(source) == expected
+
+    def test_inner_opeartor_imports(self):
+        source = "from x import a, (+), b"
+        expected = "from hoopy.magic import *\nfrom x import a\n__import_operator__(__name__, 'x', 0, '+')\nfrom x import b"
+        assert transform.transform(source) == expected
+
+    def test_magic_import_docstring(self):
+        source = '"""docstring"""'
+        expected = '"""docstring"""\nfrom hoopy.magic import *'
+        assert transform.transform(source) == expected
+
+    def test_magic_import_future(self):
+        source = "from __future__ import annotations"
+        expected = "from __future__ import annotations\nfrom hoopy.magic import *"
+        assert transform.transform(source) == expected
+
+    def test_magic_import_future_docstring(self):
+        source = '"""docstring"""\nfrom __future__ import annotations'
+        expected = '"""docstring"""\nfrom __future__ import annotations\nfrom hoopy.magic import *'
+        assert transform.transform(source) == expected
+
+    def test_bad_magic_import_future_docstring(self):
+        source = 'from __future__ import annotations\n"""not docstring"""'
+        expected = "from __future__ import annotations\nfrom hoopy.magic import *\n'not docstring'"
         assert transform.transform(source) == expected
