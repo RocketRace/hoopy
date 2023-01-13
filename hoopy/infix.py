@@ -97,7 +97,6 @@ def infix(
     """
     if is_disallowed_operator(op):
         raise ValueError(f"The operator '{op}' is not allowed")
-        # TODO
 
     def inner(fn: Callable[[T, U], V]) -> InfixOperator[T, U, V]:
         ctx = context(fn)

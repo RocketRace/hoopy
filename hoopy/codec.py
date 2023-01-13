@@ -1,32 +1,42 @@
 """
-Codec operations and the preprocessor architecture
+Module for enabling and disabling the codec-based transformer.
+
+Interacts with the Python Codec API.
 """
 
 from __future__ import annotations
 
-import codecs
 from encodings import utf_8
-from io import StringIO
-from tokenize import TokenInfo, generate_tokens, untokenize
-from typing import Iterator, Sequence
+import codecs
 
 
-class Preprocessor:
-    def _codec(self) -> codecs.CodecInfo:
+def searcher(name: str) -> codecs.CodecInfo | None:
+    """
+    Returns the CodecInfo object associated with the codec name "hoopy", None otherwise
+    """
+    if name.lower() == "hoopy":
         return codecs.CodecInfo(
             # utf_8.encode arguments are pos-only but CodecInfo requires pos-or-kw
             lambda input, errors="strict": utf_8.encode(input, errors),
-            self.decode,
+            decode_hoopy,
         )
 
-    @staticmethod
-    def tokenize(source: str) -> Iterator[TokenInfo]:
-        return generate_tokens(StringIO(source).readline)
 
-    def decode(self, input: bytes, errors: str = "strict") -> tuple[str, int]:
-        source, read = utf_8.decode(input, errors=errors)
-        tokens = list(self.tokenize(source))
-        return untokenize(self.preprocess_tokens(tokens)), read
+def decode_hoopy(input: bytes, errors: str = "strict") -> tuple[str, int]:
+    """
+    Transforms an utf-8 encoded source using the hoopy transformer
+    """
+    from .transform import transform
 
-    def preprocess_tokens(self, tokens: Sequence[TokenInfo]) -> Sequence[TokenInfo]:
-        return tokens
+    source, read = utf_8.decode(input, errors=errors)
+    return transform(source), read
+
+
+def register():
+    """Registers the Hoopy codec"""
+    codecs.register(searcher)
+
+
+def unregister():
+    """Unregisters the Hoopy codec"""
+    codecs.unregister(searcher)
