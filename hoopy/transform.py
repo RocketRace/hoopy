@@ -134,11 +134,6 @@ def mangle_operator_objects_inplace(
             start = None
     for start, end, mangled in reversed(operators):
         tokens.remove_inplace(toks, start - 1, end + 1)
-        # tokens.insert_inplace(toks, start - 1, token.OP, "(")
-        # tokens.insert_inplace(
-        #     toks, start, token.NAME, mangled
-        # )
-        # tokens.insert_inplace(toks, start + 1, token.OP, ")")
         tokens.insert_inplace(
             toks, start - 1, token.NAME, mangled, left_offset=1, right_offset=1
         )
@@ -452,11 +447,11 @@ class HoopyTransformer(ast.NodeTransformer):
             demangled = demangle_operator_string(alias.name, self.operator_nonce)
             if demangled is not None:
                 if prev < i:
-                    # This breaks line numbers, but oh well
+                    # TODO: Make the spans tidier for better reporting
                     clone = copy.deepcopy(node)
                     clone.names = clone.names[prev:i]
                     nodes.append(clone)
-                    nodes.append(generate_import(node.module, node.level, demangled))
+                nodes.append(generate_import(node.module, node.level, demangled))
                 prev = i + 1
         if prev != len(node.names):
             clone = copy.deepcopy(node)
