@@ -329,3 +329,23 @@ class TestFullTransformation:
         source = 'from __future__ import annotations\n"""not docstring"""'
         expected = "from __future__ import annotations\nfrom hoopy.magic import *\n'not docstring'"
         assert transform.transform(source) == expected
+
+    def test_operator_definition(self):
+        source = "def (??)(a, b): pass"
+        expected = "from hoopy.magic import *\n\n@__define_operator__('??', False)\ndef __operator_nonce_3f3f(a, b):\n    pass"
+        assert transform.transform(source, "nonce") == expected
+
+    def test_operator_definition_flipped(self):
+        source = "def (??)(a, self): pass"
+        expected = "from hoopy.magic import *\n\n@__define_operator__('??', True)\ndef __operator_nonce_3f3f(a, self):\n    pass"
+        assert transform.transform(source, "nonce") == expected
+
+    def test_class_operator_definition(self):
+        source = "class C:\n    def (/%)(self, other): pass"
+        expected = "from hoopy.magic import *\n\nclass C:\n\n    @__define_operator__('/%', False)\n    def __operator_nonce_2f25(self, other):\n        pass"
+        assert transform.transform(source, "nonce") == expected
+
+    def test_class_operator_definition_flipped(self):
+        source = "class C:\n    def (/%)(other, self): pass"
+        expected = "from hoopy.magic import *\n\nclass C:\n\n    @__define_operator__('/%', True)\n    def __operator_nonce_2f25(other, self):\n        pass"
+        assert transform.transform(source, "nonce") == expected

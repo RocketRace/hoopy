@@ -46,6 +46,45 @@ def generate_import(module: str | None, level: int, op: str) -> ast.stmt:
     )
 
 
+def generate_operator_definition(op: str, func: ast.FunctionDef) -> ast.stmt:
+    """Generates a *statement* of the form
+    ```
+    @__define_operator__(op, <flipped>)
+    <func>
+    ```
+    where `flipped` is automatically inferred from the position of `self` in the args of `func`,
+    as well as the context in which the function was defined.
+    """
+    args = func.args
+    try:
+        self_position = next(i for i, arg in enumerate(args.args) if arg.arg == "self")
+        # (other, self) -> ...
+        flipped = self_position == 1
+    except StopIteration:
+        # if no explicit self is given, make no assumptions
+        flipped = False
+
+    decorators = copy.deepcopy(func.decorator_list)
+    decorators.insert(
+        0,
+        ast.Call(
+            func=ast.Name("__define_operator__", ctx=ast.Load()),
+            args=[ast.Constant(op), ast.Constant(flipped)],
+            keywords=[],
+        ),
+    )
+    return ast.copy_location(
+        ast.FunctionDef(
+            name=func.name,
+            args=func.args,
+            body=func.body,
+            decorator_list=decorators,
+            returns=func.returns,
+        ),
+        func,
+    )
+
+
 MAGIC_IMPORTS = ast.ImportFrom(
     module="hoopy.magic", names=[ast.alias(name="*")], level=0
 )
@@ -584,6 +623,7 @@ class HoopyTransformer(ast.NodeTransformer):
                     args=[ast.Name("__name__"), ast.Constant(value=op)],
                 ),
                 args=[target, x],  # binary operator
+                keywords=[],
             ) if is_builtin_with_kind(op, OperatorKind.Inplace):
                 return ast.AugAssign(target=target, op=builtin_to_ast_op(op), value=x)
             case _:
@@ -595,10 +635,15 @@ class HoopyTransformer(ast.NodeTransformer):
     # # check which of their attribute types reference `_Identifier`,
     # # and override only those?
 
-    # # These three interest me a lot, as an alternate API
-    # # since we don't actually care about the sanctity of python syntax, maybe?
-    # def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
-    #     return super().visit_FunctionDef(node)
+    # We don't actually care about the sanctity of python syntax
+    # so enjoy this alternative syntax!
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
+        node = self.generic_visit(node)
+        match demangle_operator_string(node.name, self.operator_nonce):
+            case None:
+                return node
+            case op:
+                return generate_operator_definition(op, node)
 
     # def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
     #     return super().visit_AsyncFunctionDef(node)
@@ -668,10 +713,11 @@ def remove_accidental_indents(
     return out
 
 
-def transform(source: str) -> str:
+def transform(source: str, nonce: str | None = None) -> str:
     """Performs the Hoopy transformations on an input program."""
 
-    nonce = str(random.randint(0, 2**32 - 1))
+    if not nonce:
+        nonce = str(random.randint(0, 2**32 - 1))
 
     def with_nonce(fn: Callable[[T, str], U]) -> Callable[[T], U]:
         def inner(x: T) -> U:

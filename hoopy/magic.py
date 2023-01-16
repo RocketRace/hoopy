@@ -9,10 +9,17 @@ import sys
 
 from typing import Any, Callable
 
-from .runtime import BUILTIN_OPERATORS, PartialFunction
+from .infix import infix
+from .utils import T, U, V, Decorator, FunctionContext, context
+from .runtime import BUILTIN_OPERATORS, InfixOperator, PartialFunction
 
 # The transformer inserts `from hoopy.magic import *` to transformed programs
-__all__ = "__operator__", "__import_operator__", "__partial_apply__"
+__all__ = (
+    "__operator__",
+    "__import_operator__",
+    "__partial_apply__",
+    "__define_operator__",
+)
 
 
 def __operator__(module: str, key: str) -> Callable[[Any, Any], Any]:
@@ -53,3 +60,13 @@ def __partial_apply__(function: Any, argument: Any) -> Any:
         return function(argument)
     else:
         return PartialFunction(function)(argument)
+
+
+def __define_operator__(
+    op: str, arg_flip: bool
+) -> Decorator[[T, U], V, InfixOperator[T, U, V]]:
+    def inner(fn: Callable[[T, U], V], /) -> InfixOperator[T, U, V]:
+        flipped = context(fn) == FunctionContext.Class and arg_flip
+        return infix(op, flipped)(fn)
+
+    return inner
