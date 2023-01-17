@@ -335,6 +335,11 @@ class TestFullTransformation:
         expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=False)\ndef __operator_nonce_3f3f(a, b):\n    pass"
         assert transform.transform(source, "nonce") == expected
 
+    def test_async_operator_definition(self):
+        source = "async def (??)(a, b): pass"
+        expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=False)\nasync def __operator_nonce_3f3f(a, b):\n    pass"
+        assert transform.transform(source, "nonce") == expected
+
     def test_operator_definition_flipped(self):
         source = "def (??)(a, self): pass"
         expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=True)\ndef __operator_nonce_3f3f(a, self):\n    pass"

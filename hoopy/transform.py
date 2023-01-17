@@ -46,11 +46,13 @@ def generate_import(module: str | None, level: int, op: str) -> ast.stmt:
     )
 
 
-def generate_operator_definition(op: str, func: ast.FunctionDef) -> ast.stmt:
+def generate_operator_definition(
+    op: str, func: ast.FunctionDef | ast.AsyncFunctionDef, *, asynchronous: bool
+) -> ast.stmt:
     """Generates a *statement* of the form
     ```
     @__define_operator__(op, flipped=<flipped>)
-    <func>
+    <async?> def <...>
     ```
     where `flipped` is automatically inferred from the position of `self` in the args of `func`,
     as well as the context in which the function was defined.
@@ -73,8 +75,9 @@ def generate_operator_definition(op: str, func: ast.FunctionDef) -> ast.stmt:
             keywords=[ast.keyword("flipped", ast.Constant(flipped))],
         ),
     )
+    constructor = ast.AsyncFunctionDef if asynchronous else ast.FunctionDef
     return ast.copy_location(
-        ast.FunctionDef(
+        constructor(
             name=func.name,
             args=func.args,
             body=func.body,
@@ -643,10 +646,15 @@ class HoopyTransformer(ast.NodeTransformer):
             case None:
                 return node
             case op:
-                return generate_operator_definition(op, node)
+                return generate_operator_definition(op, node, asynchronous=False)
 
-    # def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
-    #     return super().visit_AsyncFunctionDef(node)
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
+        node = self.generic_visit(node)
+        match demangle_operator_string(node.name, self.operator_nonce):
+            case None:
+                return node
+            case op:
+                return generate_operator_definition(op, node, asynchronous=True)
 
     # def visit_ClassDef(self, node: ast.ClassDef) -> Any:
     #     return super().visit_ClassDef(node)
