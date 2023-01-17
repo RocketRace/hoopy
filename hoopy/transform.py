@@ -49,7 +49,7 @@ def generate_import(module: str | None, level: int, op: str) -> ast.stmt:
 def generate_operator_definition(op: str, func: ast.FunctionDef) -> ast.stmt:
     """Generates a *statement* of the form
     ```
-    @__define_operator__(op, <flipped>)
+    @__define_operator__(op, flipped=<flipped>)
     <func>
     ```
     where `flipped` is automatically inferred from the position of `self` in the args of `func`,
@@ -69,8 +69,8 @@ def generate_operator_definition(op: str, func: ast.FunctionDef) -> ast.stmt:
         0,
         ast.Call(
             func=ast.Name("__define_operator__", ctx=ast.Load()),
-            args=[ast.Constant(op), ast.Constant(flipped)],
-            keywords=[],
+            args=[ast.Constant(op)],
+            keywords=[ast.keyword("flipped", ast.Constant(flipped))],
         ),
     )
     return ast.copy_location(
