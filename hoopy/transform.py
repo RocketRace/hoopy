@@ -66,8 +66,8 @@ def generate_operator_definition(
         # if no explicit self is given, make no assumptions
         flipped = False
 
-    decorators = copy.deepcopy(func.decorator_list)
-    decorators.insert(
+    new_func = copy.deepcopy(func)
+    new_func.decorator_list.insert(
         0,
         ast.Call(
             func=ast.Name("__define_operator__", ctx=ast.Load()),
@@ -75,17 +75,28 @@ def generate_operator_definition(
             keywords=[ast.keyword("flipped", ast.Constant(flipped))],
         ),
     )
-    constructor = ast.AsyncFunctionDef if asynchronous else ast.FunctionDef
-    return ast.copy_location(
-        constructor(
-            name=func.name,
-            args=func.args,
-            body=func.body,
-            decorator_list=decorators,
-            returns=func.returns,
+    return new_func
+
+
+def generate_operator_class(op: str, cls: ast.ClassDef) -> ast.stmt:
+    """Generates a *statement* of the form
+    ```
+    @__define_operator__(op, flipped=False)
+    class <...>
+    ```
+    which effectively makes the class callable as an operator,
+    akin to cons list syntax.
+    """
+    new_cls = copy.deepcopy(cls)
+    new_cls.decorator_list.insert(
+        0,
+        ast.Call(
+            func=ast.Name("__define_operator__", ctx=ast.Load()),
+            args=[ast.Constant(op)],
+            keywords=[ast.keyword("flipped", ast.Constant(False))],
         ),
-        func,
     )
+    return new_cls
 
 
 MAGIC_IMPORTS = ast.ImportFrom(
@@ -656,8 +667,13 @@ class HoopyTransformer(ast.NodeTransformer):
             case op:
                 return generate_operator_definition(op, node, asynchronous=True)
 
-    # def visit_ClassDef(self, node: ast.ClassDef) -> Any:
-    #     return super().visit_ClassDef(node)
+    def visit_ClassDef(self, node: ast.ClassDef) -> Any:
+        node = self.generic_visit(node)
+        match demangle_operator_string(node.name, self.operator_nonce):
+            case None:
+                return node
+            case op:
+                return generate_operator_class(op, node)
 
     # # These could be interesting if we allow assigning
     # def visit_Name(self, node: ast.Name) -> Any:

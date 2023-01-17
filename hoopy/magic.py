@@ -18,6 +18,12 @@ b = __operator__(__name__, "$")
 @__define_operator__("$!", flipped=False)
 def __operator_foo_2421(x, y):
     pass
+
+# from `@dataclass def (>:): l: int; r: int`
+@__define_operator__(">:", flipped=False)
+class __operator_foo_3e3a:
+    l: int
+    r: int
 ```
 """
 from __future__ import annotations
@@ -85,7 +91,7 @@ def __define_operator__(
     op: str, *, flipped: bool
 ) -> Decorator[[T, U], V, InfixOperator[T, U, V]]:
     """
-    Derived from `def ($)(x, y): ...`
+    Derived from `def ($)(x, y): ...` or `class ($): def __init__(self, other): ...`
     """
 
     def inner(fn: Callable[[T, U], V], /) -> InfixOperator[T, U, V]:

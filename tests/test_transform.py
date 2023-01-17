@@ -354,3 +354,8 @@ class TestFullTransformation:
         source = "class C:\n    def (/%)(other, self): pass"
         expected = "from hoopy.magic import *\n\nclass C:\n\n    @__define_operator__('/%', flipped=True)\n    def __operator_nonce_2f25(other, self):\n        pass"
         assert transform.transform(source, "nonce") == expected
+
+    def test_operator_class_definition(self):
+        source = "class (|+|): pass"
+        expected = "from hoopy.magic import *\n\n@__define_operator__('|+|', flipped=False)\nclass __operator_nonce_7c2b7c:\n    pass"
+        assert transform.transform(source, "nonce") == expected
