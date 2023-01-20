@@ -33,7 +33,13 @@ from typing import Any, Callable
 
 from .infix import infix
 from .utils import T, U, V, Decorator, FunctionContext, context
-from .runtime import BUILTIN_OPERATORS, InfixOperator, PartialFunction
+from .runtime import (
+    BUILTIN_OPERATORS,
+    InfixOperator,
+    LeftInfixOperable,
+    PartialFunction,
+    RightInfixOperable,
+)
 
 # The transformer inserts `from hoopy.magic import *` to transformed programs
 __all__ = (
@@ -50,22 +56,24 @@ def __operator__(module: str, key: str) -> Callable[[Any, Any], Any]:
         return BUILTIN_OPERATORS[key]
 
     def get(left: object, right: object) -> object:
-        # TODO: handle right-side operators
-        # TODO: handle module-level operators
-        if hasattr(type(left), "__infix_operators__"):
-            sentinel = object()
-            operator = type(left).__infix_operators__.get(key, sentinel)
-            if operator is not sentinel:
-                return operator(left, right)
-        if hasattr(type(right), "__infix_operators_flipped__"):
-            sentinel = object()
-            operator = type(left).__infix_operators_flipped__.get(key, sentinel)
-            if operator is not sentinel:
+        # The `Any` annotation is needed due to type checker limitations.
+        lt: Any = type(left)
+        if isinstance(lt, LeftInfixOperable):
+            operator = lt.__infix_operators__.get(key)
+            if operator is not None:
                 return operator(left, right)
 
-        mod = sys.modules[module]
-        if hasattr(mod, "__infix_operators__"):
-            pass
+        rt: Any = type(right)
+        if isinstance(rt, RightInfixOperable):
+            operator = rt.__infix_operators_flipped__.get(key)
+            if operator is not None:
+                return operator(left, right)
+
+        mod: Any = sys.modules[module]
+        if isinstance(mod, LeftInfixOperable):
+            operator = mod.__infix_operators__.get(key)
+            if operator is not None:
+                return operator(left, right)
 
         raise TypeError(
             f"Unsupported operand type(s) for {key}: '{type(left).__name__}' and '{type(right).__name__}'"

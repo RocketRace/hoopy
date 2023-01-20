@@ -106,7 +106,7 @@ def infix(
             )
         operator = InfixOperator(op, flipped, fn)
         if ctx == FunctionContext.Global:
-            if op not in BUILTIN_OPERATORS:
+            if op in BUILTIN_OPERATORS:
                 raise TypeError(
                     f"Builtin operator '{op}' for '{fn.__qualname__}' cannot be defined in a global scope\n"
                     "Module-scoped operators must not share a name with built-in ones"

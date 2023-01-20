@@ -6,7 +6,16 @@ import operator
 import re
 from enum import IntEnum
 from types import ModuleType
-from typing import Any, Callable, Generic, Mapping, overload
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Mapping,
+    Protocol,
+    overload,
+    reveal_type,
+    runtime_checkable,
+)
 
 from .utils import T, U, V
 
@@ -354,3 +363,17 @@ def operator_proxy_for(string: str) -> str:
     """Returns the simple operator string associated with the given
     more complex operator string."""
     return OPERATOR_PROXIES[string[-1]]
+
+
+@runtime_checkable
+class LeftInfixOperable(Protocol):
+    """Protocol for types supporting left infix operators (`self [op] other`)"""
+
+    __infix_operators__: Mapping[str, InfixOperator[Any, Any, Any]]
+
+
+@runtime_checkable
+class RightInfixOperable(Protocol):
+    """Protocol for types supporting right (a.k.a. flipped) infix operators (`other [op] left`)"""
+
+    __infix_operators_flipped__: Mapping[str, InfixOperator[Any, Any, Any]]
