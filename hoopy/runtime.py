@@ -13,7 +13,6 @@ from typing import (
     Mapping,
     Protocol,
     overload,
-    reveal_type,
     runtime_checkable,
 )
 

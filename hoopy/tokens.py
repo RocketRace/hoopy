@@ -2,8 +2,6 @@
 Utility functions for dealing with token streams.
 
 This is used primarily by the `transform` module.
-
-TODO: are in-place transformations really worth it?
 """
 
 from __future__ import annotations

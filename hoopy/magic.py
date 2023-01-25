@@ -83,7 +83,7 @@ def __operator__(module: str, key: str) -> Callable[[Any, Any], Any]:
 
 
 def __import_operator__(module: str, key: str, from_module: str) -> None:
-    """Derived from `from mod import ($)"""
+    """Derived from `from mod import ($)`"""
     operator = __operator__(from_module, key)
 
 
