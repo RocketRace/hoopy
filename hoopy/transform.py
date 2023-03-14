@@ -46,6 +46,19 @@ def generate_import(module: str | None, level: int, op: str) -> ast.stmt:
     )
 
 
+def generate_operator_object(op: str) -> ast.expr:
+    """Generate an *expression* of the form
+    ```
+    __operator__(__name__, op)
+    ```
+    """
+    return ast.Call(
+        func=ast.Name("__operator__", ctx=ast.Load()),
+        args=[ast.Name("__name__", ctx=ast.Load()), ast.Constant(op)],
+        keywords=[],
+    )
+
+
 def generate_operator_definition(
     op: str, func: ast.FunctionDef | ast.AsyncFunctionDef, *, asynchronous: bool
 ) -> ast.stmt:
@@ -263,11 +276,7 @@ class Custom(OperatorBase):
         given values of `op`, `left` and `right`.
         """
         return ast.Call(
-            func=ast.Call(
-                func=ast.Name("__operator__", ctx=ast.Load()),
-                args=[ast.Name("__name__", ctx=ast.Load()), ast.Constant(self.op)],
-                keywords=[],
-            ),
+            func=generate_operator_object(self.op),
             args=[left, right],
             keywords=[],
             lineno=left.lineno,
@@ -675,9 +684,15 @@ class HoopyTransformer(ast.NodeTransformer):
             case op:
                 return generate_operator_class(op, node)
 
-    # # These could be interesting if we allow assigning
-    # def visit_Name(self, node: ast.Name) -> Any:
-    #     return super().visit_Name(node)
+    def visit_Name(self, node: ast.Name) -> Any:
+        match demangle_operator_string(node.id, self.operator_nonce):
+            case None:
+                return node
+            case op:
+                if node.ctx == ast.Load():
+                    return generate_operator_object(op)
+                else:
+                    return node
 
     # def visit_Attribute(self, node: ast.Attribute) -> Any:
     #     return super().visit_Attribute(node)
@@ -749,6 +764,7 @@ def transform(source: str, nonce: str | None = None) -> str:
 
         return inner
 
+    # Pipes are very unpythonic. Let's use them here
     toks, spans = (
         Pipe(source)
         | tokens.lex
