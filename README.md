@@ -33,3 +33,7 @@ $ poetry run pre-commit install
 ```bash
 $ ./stdlib_test.sh
 ```
+
+## Special thanks
+
+Thanks to @Niki4tap for reviving this project from the ashes and showing that there is a way to sidestep the [`cpython` bug](https://github.com/python/cpython/issues/102353) that I had previously thought made this library impossible! Hoopy lives again 🕊️
