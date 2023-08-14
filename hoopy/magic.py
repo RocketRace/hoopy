@@ -99,7 +99,7 @@ def __define_operator__(
     op: str, *, flipped: bool
 ) -> Decorator[[T, U], V, InfixOperator[T, U, V]]:
     """
-    Derived from `def ($)(x, y): ...` or `class ($): def __init__(self, other): ...`
+    Derived from `def ($)(x, y): ...` or `class ($): def __new__(cls, left, right): ...`
     """
 
     def inner(fn: Callable[[T, U], V], /) -> InfixOperator[T, U, V]:
