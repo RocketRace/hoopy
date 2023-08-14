@@ -1,7 +1,5 @@
 # hoopy
 
-# Unfortunately, this library cannot be released in a functioning state due to a bug in `cpython`.
-
 Hoopy extends the Python language, letting you write a subset of Haskell in your scripts!
 
 - `pip install hoopy` (not yet published)
