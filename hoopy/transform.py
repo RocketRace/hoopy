@@ -689,10 +689,11 @@ class HoopyTransformer(ast.NodeTransformer):
             case None:
                 return node
             case op:
-                if node.ctx == ast.Load():
-                    return generate_operator_object(op)
-                else:
-                    return node
+                match node.ctx:
+                    case ast.Load():
+                        return generate_operator_object(op)
+                    case _:
+                        return node
 
     # def visit_Attribute(self, node: ast.Attribute) -> Any:
     #     return super().visit_Attribute(node)
@@ -775,6 +776,10 @@ def transform(source: str, nonce: str | None = None) -> str:
 
     tree = SpanTree(spans)
 
+    # This additional newline is crucial. Without it, the code runs into a bug in cpython that causes
+    # codec behavior to completely explode. Let that be a warning for the rest of you.
+    newline = lambda s: s + "\n"
+
     return (
         Pipe(toks)
         | tokens.unlex
@@ -785,4 +790,5 @@ def transform(source: str, nonce: str | None = None) -> str:
         | HoopyTransformer(nonce, spans, tree).visit
         | ast.fix_missing_locations
         | ast.unparse
+        | newline
     )()

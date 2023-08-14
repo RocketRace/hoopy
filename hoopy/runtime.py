@@ -290,7 +290,10 @@ class PartialFunction:
         self.func = func
         self.args: list[Any] = []
         # Not ideal but there is no real alternative
-        spec = inspect.getfullargspec(func)
+        if isinstance(func, InfixOperator):
+            spec = inspect.getfullargspec(func.function)
+        else:
+            spec = inspect.getfullargspec(func)
         self.n = len(spec.args) - len(spec.defaults or ())
 
     def __call__(self, arg: Any) -> Any:

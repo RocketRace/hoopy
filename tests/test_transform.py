@@ -269,93 +269,93 @@ class TestStandardLibraryBreakage:
 class TestFullTransformation:
     def test_simple_program(self):
         source = "a = f <$> x <*> y ?? z"
-        expected = "from hoopy.magic import *\na = __operator__(__name__, '??')(__operator__(__name__, '<*>')(__operator__(__name__, '<$>')(f, x), y), z)"
+        expected = "from hoopy.magic import *\na = __operator__(__name__, '??')(__operator__(__name__, '<*>')(__operator__(__name__, '<$>')(f, x), y), z)\n"
         assert transform.transform(source) == expected
 
     def test_parenthesized_spans(self):
         source = "(f) x"
-        expected = "from hoopy.magic import *\n__partial_apply__(f, x)"
+        expected = "from hoopy.magic import *\n__partial_apply__(f, x)\n"
         assert transform.transform(source) == expected
 
     def test_inline_inplace(self):
         source = "a = x += y"
-        expected = "from hoopy.magic import *\na = __operator__(__name__, '+=')(x, y)"
+        expected = "from hoopy.magic import *\na = __operator__(__name__, '+=')(x, y)\n"
         assert transform.transform(source) == expected
 
     def test_normal_inplace(self):
         source = "x += 2"
-        expected = "from hoopy.magic import *\nx += 2"
+        expected = "from hoopy.magic import *\nx += 2\n"
         assert transform.transform(source) == expected
 
     def test_nested_normal_inplace(self):
         source = "if x:\n    x += 1"
-        expected = "from hoopy.magic import *\nif x:\n    x += 1"
+        expected = "from hoopy.magic import *\nif x:\n    x += 1\n"
         assert transform.transform(source) == expected
 
     def test_plain(self):
         # Don't wrap builtin operators with an __operator__ call
         source = "1 + 2 + 3"
-        expected = "from hoopy.magic import *\n1 + 2 + 3"
+        expected = "from hoopy.magic import *\n1 + 2 + 3\n"
         assert transform.transform(source) == expected
 
     def test_operator_imports(self):
         source = "from x import (+)"
         expected = (
-            "from hoopy.magic import *\n__import_operator__(__name__, 'x', 0, '+')"
+            "from hoopy.magic import *\n__import_operator__(__name__, 'x', 0, '+')\n"
         )
         assert transform.transform(source) == expected
 
     def test_inner_opeartor_imports(self):
         source = "from x import a, (+), b"
-        expected = "from hoopy.magic import *\nfrom x import a\n__import_operator__(__name__, 'x', 0, '+')\nfrom x import b"
+        expected = "from hoopy.magic import *\nfrom x import a\n__import_operator__(__name__, 'x', 0, '+')\nfrom x import b\n"
         assert transform.transform(source) == expected
 
     def test_magic_import_docstring(self):
         source = '"""docstring"""'
-        expected = '"""docstring"""\nfrom hoopy.magic import *'
+        expected = '"""docstring"""\nfrom hoopy.magic import *\n'
         assert transform.transform(source) == expected
 
     def test_magic_import_future(self):
         source = "from __future__ import annotations"
-        expected = "from __future__ import annotations\nfrom hoopy.magic import *"
+        expected = "from __future__ import annotations\nfrom hoopy.magic import *\n"
         assert transform.transform(source) == expected
 
     def test_magic_import_future_docstring(self):
         source = '"""docstring"""\nfrom __future__ import annotations'
-        expected = '"""docstring"""\nfrom __future__ import annotations\nfrom hoopy.magic import *'
+        expected = '"""docstring"""\nfrom __future__ import annotations\nfrom hoopy.magic import *\n'
         assert transform.transform(source) == expected
 
     def test_bad_magic_import_future_docstring(self):
         source = 'from __future__ import annotations\n"""not docstring"""'
-        expected = "from __future__ import annotations\nfrom hoopy.magic import *\n'not docstring'"
+        expected = "from __future__ import annotations\nfrom hoopy.magic import *\n'not docstring'\n"
         assert transform.transform(source) == expected
 
     def test_operator_definition(self):
         source = "def (??)(a, b): pass"
-        expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=False)\ndef __operator_nonce_3f3f(a, b):\n    pass"
+        expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=False)\ndef __operator_nonce_3f3f(a, b):\n    pass\n"
         assert transform.transform(source, "nonce") == expected
 
     def test_async_operator_definition(self):
         source = "async def (??)(a, b): pass"
-        expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=False)\nasync def __operator_nonce_3f3f(a, b):\n    pass"
+        expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=False)\nasync def __operator_nonce_3f3f(a, b):\n    pass\n"
         assert transform.transform(source, "nonce") == expected
 
     def test_operator_definition_flipped(self):
         source = "def (??)(a, self): pass"
-        expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=True)\ndef __operator_nonce_3f3f(a, self):\n    pass"
+        expected = "from hoopy.magic import *\n\n@__define_operator__('??', flipped=True)\ndef __operator_nonce_3f3f(a, self):\n    pass\n"
         assert transform.transform(source, "nonce") == expected
 
     def test_class_operator_definition(self):
         source = "class C:\n    def (/%)(self, other): pass"
-        expected = "from hoopy.magic import *\n\nclass C:\n\n    @__define_operator__('/%', flipped=False)\n    def __operator_nonce_2f25(self, other):\n        pass"
+        expected = "from hoopy.magic import *\n\nclass C:\n\n    @__define_operator__('/%', flipped=False)\n    def __operator_nonce_2f25(self, other):\n        pass\n"
         assert transform.transform(source, "nonce") == expected
 
     def test_class_operator_definition_flipped(self):
         source = "class C:\n    def (/%)(other, self): pass"
-        expected = "from hoopy.magic import *\n\nclass C:\n\n    @__define_operator__('/%', flipped=True)\n    def __operator_nonce_2f25(other, self):\n        pass"
+        expected = "from hoopy.magic import *\n\nclass C:\n\n    @__define_operator__('/%', flipped=True)\n    def __operator_nonce_2f25(other, self):\n        pass\n"
         assert transform.transform(source, "nonce") == expected
 
     def test_operator_class_definition(self):
         source = "class (|+|): pass"
-        expected = "from hoopy.magic import *\n\n@__define_operator__('|+|', flipped=False)\nclass __operator_nonce_7c2b7c:\n    pass"
+        expected = "from hoopy.magic import *\n\n@__define_operator__('|+|', flipped=False)\nclass __operator_nonce_7c2b7c:\n    pass\n"
         assert transform.transform(source, "nonce") == expected

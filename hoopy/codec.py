@@ -21,7 +21,6 @@ def decode(input: bytes, errors: str = "strict") -> tuple[str, int]:
     from .transform import transform
 
     source, read = utf_8.decode(input, errors=errors)
-    print("----nope-----", bytes(input), repr(source), sep="\n")
     return transform(source), read
 
 
