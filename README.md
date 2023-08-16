@@ -6,7 +6,16 @@ Hoopy extends the Python language, letting you write a subset of Haskell in your
 
 ## Usage
 
+```py
+
+```
+
 ## Caveats
+
+Currently, custom operators are not supported in local scopes. This means that you cannot define a custom
+operator inside a function definition: If you attempt to do so, the library will raise an exception. This
+is a technically demanding task because local scopes in python are far less dynamic than global scopes.
+(This is the same reason why you can't use `from module import *` inside a function definition.)
 
 Hoopy is implemented entirely using Python (making maximal use of the builtin parser and tokenizer).
 Given that static typing in Python is optional, Hoopy implements custom operators are using pure-Python
@@ -26,12 +35,6 @@ before submitting any code-related pull requests!
 ```bash
 $ poetry install
 $ poetry run pre-commit install
-```
-
-(once implemented) Run the regression test suite on any significant code changes.
-
-```bash
-$ ./stdlib_test.sh
 ```
 
 ## Special thanks

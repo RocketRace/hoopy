@@ -2,4 +2,4 @@ import hoopy
 
 hoopy.register()
 
-import main_hoopy
+import main_hoo

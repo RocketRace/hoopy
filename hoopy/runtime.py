@@ -36,7 +36,7 @@ def bind_op_to(
     attr = op_attr(operator.flipped, target)
     if not hasattr(target, attr):
         setattr(target, attr, {})
-    getattr(target, attr)[operator.op] = operator.function
+    getattr(target, attr)[operator.op] = operator
 
 
 def unbind_op_from(
@@ -292,8 +292,10 @@ class PartialFunction:
         # Not ideal but there is no real alternative
         if isinstance(func, InfixOperator):
             spec = inspect.getfullargspec(func.function)
-        else:
+        elif callable(func):
             spec = inspect.getfullargspec(func)
+        else:
+            raise TypeError(f"'{type(func).__name__}' object is not callable")
         self.n = len(spec.args) - len(spec.defaults or ())
 
     def __call__(self, arg: Any) -> Any:

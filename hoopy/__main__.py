@@ -7,4 +7,6 @@ from hoopy.transform import transform
 import sys
 
 input = "\n".join(sys.stdin.readlines())
-exec(transform(input))
+src = transform(input)
+print(src)
+# exec(src)

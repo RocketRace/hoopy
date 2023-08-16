@@ -22,10 +22,10 @@ from .runtime import (
     is_builtin_with_kind,
     operator_proxy_for,
 )
-from .utils import T, U, Pipe, Span, SpanTree
+from .utils import T, U, Pipe, Span, SpanTree, dbg
 
 
-def generate_import(module: str | None, level: int, op: str) -> ast.stmt:
+def generate_import(orig: ast.ImportFrom, op: str) -> ast.stmt:
     """Generates a *statement* of the form
     ```
     __import_operator__(__name__, module, level, op)
@@ -37,8 +37,8 @@ def generate_import(module: str | None, level: int, op: str) -> ast.stmt:
             func=ast.Name("__import_operator__", ctx=ast.Load()),
             args=[
                 ast.Name("__name__", ctx=ast.Load()),
-                ast.Constant(module),
-                ast.Constant(level),
+                ast.Constant(orig.module),
+                ast.Constant(orig.level),
                 ast.Constant(op),
             ],
             keywords=[],
@@ -513,7 +513,7 @@ class HoopyTransformer(ast.NodeTransformer):
                     clone = copy.deepcopy(node)
                     clone.names = clone.names[prev:i]
                     nodes.append(clone)
-                nodes.append(generate_import(node.module, node.level, demangled))
+                nodes.append(generate_import(node, demangled))
                 prev = i + 1
         if prev != len(node.names):
             clone = copy.deepcopy(node)

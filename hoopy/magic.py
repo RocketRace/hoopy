@@ -27,6 +27,7 @@ class __operator_foo_3e3a:
 ```
 """
 from __future__ import annotations
+import importlib
 import sys
 
 from typing import Any, Callable
@@ -39,6 +40,7 @@ from .runtime import (
     LeftInfixOperable,
     PartialFunction,
     RightInfixOperable,
+    bind_op_to,
 )
 
 # The transformer inserts `from hoopy.magic import *` to transformed programs
@@ -50,41 +52,45 @@ __all__ = (
 )
 
 
-def __operator__(module: str, key: str) -> Callable[[Any, Any], Any]:
+def __operator__(module: str, op: str) -> Callable[[Any, Any], Any]:
     """Derived from `($)` or `x $ y`"""
-    if key in BUILTIN_OPERATORS:
-        return BUILTIN_OPERATORS[key]
+    if op in BUILTIN_OPERATORS:
+        return BUILTIN_OPERATORS[op]
 
     def get(left: object, right: object) -> object:
         # The `Any` annotation is needed due to type checker limitations.
         lt: Any = type(left)
         if isinstance(lt, LeftInfixOperable):
-            operator = lt.__infix_operators__.get(key)
+            operator = lt.__infix_operators__.get(op)
             if operator is not None:
                 return operator(left, right)
 
         rt: Any = type(right)
         if isinstance(rt, RightInfixOperable):
-            operator = rt.__infix_operators_flipped__.get(key)
+            operator = rt.__infix_operators_flipped__.get(op)
             if operator is not None:
                 return operator(left, right)
 
         mod: Any = sys.modules[module]
         if isinstance(mod, LeftInfixOperable):
-            operator = mod.__infix_operators__.get(key)
+            operator = mod.__infix_operators__.get(op)
             if operator is not None:
                 return operator(left, right)
 
         raise TypeError(
-            f"Unsupported operand type(s) for {key}: '{type(left).__name__}' and '{type(right).__name__}'"
+            f"Unsupported operand type(s) for {op}: '{type(left).__name__}' and '{type(right).__name__}'"
         )
 
     return get
 
 
-def __import_operator__(module: str, key: str, from_module: str) -> None:
+def __import_operator__(
+    target_module: str, source_module: str, level: int, op: str
+) -> None:
     """Derived from `from mod import ($)`"""
-    operator = __operator__(from_module, key)
+    src = importlib.import_module(source_module, level * "." if level else None)
+    operator = src.__infix_operators__[op]
+    bind_op_to(sys.modules[target_module], operator)
 
 
 def __partial_apply__(function: Any, argument: Any) -> Any:
