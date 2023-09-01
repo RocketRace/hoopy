@@ -63,7 +63,7 @@ statically based on the first character of the operator, following the table bel
 | `$` | 0 | `or` |
 | `?` | 1 | `and` |
 | `=`, `~` | 2 | `==`, `!=`, `>`, `<`, `>=`, `<=`, `in`, `is`, `not in`, `is not` (The python operators have special "comparison" associativity) |
-| `|` | 3 | `|` |
+| `\|` | 3 | `\|` |
 | `^` | 4 | `^` |
 | `&` | 5 | `&` |
 | `<`, `>` | 6 | `<<`, `>>` |
