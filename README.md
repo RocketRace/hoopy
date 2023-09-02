@@ -71,9 +71,7 @@ statically based on the first character of the operator, following the table bel
 | `*`, `/`, `%`, `@`, `.`, `!`, as well as partial application and infixified functions | 8 | `*`, `/`, `//`, `%`, `@` |
 | (none) | 9 | `**` (Right-associative) |
 
-There are additionally some custom operators that are disallowed due to the ambiguity they create, such as `::` (which can be either an operator call or slice syntax) or `<~` (which can be seen as the `<` operator applied to a right argument under unary `~`) or many more.
-
-Furthermore, custom in-place operators (such as `+=` or `>>=`) cannot be called as custom operators due to inconsistency between their custom and standard-python precedence. In Python, in-place operators are statements rather than expressions, meaning that they have looser precedence than any infix operator that yields expressions. Unfortunately, this means getting rid of `>>=`.
+There are a number of custom operators that will introduce ambiguity in the grammar if defined, such as `:`, `+=`, etc. This includes most operators already used by python, as well as those that may be confused with a binary operator followed by a unary operator. To fix this issue, use a backtick character (`` ` ``) in your custom operators to mark it as a "verbatim" operator. This means that instead of `x >>= y`, you should write ``x >>=` y``.
 
 Custom operators may also be imported from other modules:
 ```py
@@ -106,6 +104,8 @@ Hoopy does its best to ensure that code preprocessed by the library that's *not*
 remains semantically equivalent to its unprocessed form. This is currently tracked via unit tests running Hoopy
 against selected modules within the Python standard library. Future plans include incorporating the builtin
 (`python3 -m test`) tests directly into a *fully* preprocessed copy of the standard library.
+
+Oh, and of course: Please don't use this in production code.
 
 ## Development
 
