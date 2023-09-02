@@ -52,9 +52,12 @@ __all__ = (
 )
 
 
-def __operator__(module: str, op: str) -> Callable[[Any, Any], Any]:
+def __operator__(
+    module: str, op: str, verbatim: bool = False
+) -> Callable[[Any, Any], Any]:
     """Derived from `($)` or `x $ y`"""
-    if op in BUILTIN_OPERATORS:
+    # verbatim operators are always custom, even if they are the same operator as custom ones
+    if op in BUILTIN_OPERATORS and not verbatim:
         return BUILTIN_OPERATORS[op]
 
     def get(left: object, right: object) -> object:
@@ -102,13 +105,15 @@ def __partial_apply__(function: Any, argument: Any) -> Any:
 
 
 def __define_operator__(
-    op: str, *, flipped: bool
+    op: str, *, flipped: bool, verbatim: bool
 ) -> Decorator[[T, U], V, InfixOperator[T, U, V]]:
     """
     Derived from `def ($)(x, y): ...` or `class ($): def __new__(cls, left, right): ...`
     """
 
     def inner(fn: Callable[[T, U], V], /) -> InfixOperator[T, U, V]:
-        return infix(op, flipped and context(fn) == FunctionContext.Class)(fn)
+        return infix(
+            op, flipped and context(fn) == FunctionContext.Class, verbatim=verbatim
+        )(fn)
 
     return inner

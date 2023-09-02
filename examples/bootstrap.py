@@ -2,4 +2,6 @@ import hoopy
 
 hoopy.register()
 
-import main_hoo
+# Uncomment one of the lines below
+# import main_hoo
+import snoc_hoo

@@ -17,7 +17,7 @@ from .utils import Decorator, FunctionContext, T, U, V, context
 
 
 def infix(
-    op: str, flipped: bool = False
+    op: str, flipped: bool = False, verbatim: bool = False
 ) -> Decorator[[T, U], V, InfixOperator[T, U, V]]:
     """
     This decorator registers a custom infix operator.
@@ -58,8 +58,8 @@ def infix(
     containing only the special characters `+-*/%@&|^~!?<>.:$`, i.e. all the
     characters used in builtin operators, as well as the extra characters `?.:$`.
 
-    Certain operators are blacklisted and will raise a `ValueError`. Currently,
-    the following operators are disallowed:
+    If the `verbatim` parameter is `False`, then certain operators are blacklisted
+    and will raise a `ValueError`. Currently, the following operators are disallowed:
     * `.`
     * `...`
     * `=`
@@ -67,10 +67,13 @@ def infix(
     * `:`
     * `::`
     * `~`
+    If `verbatim` is `True`, then these operators are allowed.
 
-    If the operator is a built-in operator (such as `+`), and the declaration is
-    inside a class context, then the decorator will add the appropriate special
-    method (such as `__add__`) to the class. Otherwise, this raises `TypeError`.
+    If the `verbatim` parameter is `False`, and the operator is a built-in operator
+    (such as `+`), and the declaration is inside a class context, then the decorator
+    will add the appropriate special method (such as `__add__`) to the class. If this
+    is done in a local / global context, then it raises a `TypeError`. If `verbatim` is
+    `True` instead, then the custom operators are not converted to builtin operators.
 
     `flipped`: bool (default: `False`) - When `flipped=True`, the first
     function argument (e.g. `self`) will be the right value in the operator
@@ -95,7 +98,7 @@ def infix(
     ```
 
     """
-    if is_disallowed_operator(op):
+    if not verbatim and is_disallowed_operator(op):
         raise ValueError(f"The operator '{op}' is not allowed")
 
     def inner(fn: Callable[[T, U], V]) -> InfixOperator[T, U, V]:

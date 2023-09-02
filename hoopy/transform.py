@@ -25,7 +25,7 @@ from .runtime import (
 from .utils import T, U, Pipe, Span, SpanTree, dbg
 
 
-def generate_import(orig: ast.ImportFrom, op: str) -> ast.stmt:
+def generate_import(orig: ast.ImportFrom, op: str, verbatim: bool = False) -> ast.stmt:
     """Generates a *statement* of the form
     ```
     __import_operator__(__name__, module, level, op)
@@ -46,25 +46,29 @@ def generate_import(orig: ast.ImportFrom, op: str) -> ast.stmt:
     )
 
 
-def generate_operator_object(op: str) -> ast.expr:
+def generate_operator_object(op: str, verbatim: bool = False) -> ast.expr:
     """Generate an *expression* of the form
     ```
-    __operator__(__name__, op)
+    __operator__(__name__, op, verbatim=verbatim)
     ```
     """
     return ast.Call(
         func=ast.Name("__operator__", ctx=ast.Load()),
         args=[ast.Name("__name__", ctx=ast.Load()), ast.Constant(op)],
-        keywords=[],
+        keywords=[ast.keyword("verbatim", ast.Constant(verbatim))],
     )
 
 
 def generate_operator_definition(
-    op: str, func: ast.FunctionDef | ast.AsyncFunctionDef, *, asynchronous: bool
+    op: str,
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    asynchronous: bool,
+    verbatim: bool = False,
 ) -> ast.stmt:
     """Generates a *statement* of the form
     ```
-    @__define_operator__(op, flipped=<flipped>)
+    @__define_operator__(op, flipped=<flipped>, verbatim=<verbatim>)
     <async?> def <...>
     ```
     where `flipped` is automatically inferred from the position of `self` in the args of `func`,
@@ -85,16 +89,21 @@ def generate_operator_definition(
         ast.Call(
             func=ast.Name("__define_operator__", ctx=ast.Load()),
             args=[ast.Constant(op)],
-            keywords=[ast.keyword("flipped", ast.Constant(flipped))],
+            keywords=[
+                ast.keyword("flipped", ast.Constant(flipped)),
+                ast.keyword("verbatim", ast.Constant(verbatim)),
+            ],
         ),
     )
     return new_func
 
 
-def generate_operator_class(op: str, cls: ast.ClassDef) -> ast.stmt:
+def generate_operator_class(
+    op: str, cls: ast.ClassDef, verbatim: bool = False
+) -> ast.stmt:
     """Generates a *statement* of the form
     ```
-    @__define_operator__(op, flipped=False)
+    @__define_operator__(op, flipped=False, verbatim=<verbatim>))
     class <...>
     ```
     which effectively makes the class callable as an operator,
@@ -106,7 +115,10 @@ def generate_operator_class(op: str, cls: ast.ClassDef) -> ast.stmt:
         ast.Call(
             func=ast.Name("__define_operator__", ctx=ast.Load()),
             args=[ast.Constant(op)],
-            keywords=[ast.keyword("flipped", ast.Constant(False))],
+            keywords=[
+                ast.keyword("flipped", ast.Constant(False)),
+                ast.keyword("verbatim", ast.Constant(verbatim)),
+            ],
         ),
     )
     return new_cls
@@ -121,6 +133,10 @@ def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
     """Returns the mangled representation of a token, or None if the tokens
     don't constitute a valid operator.
 
+    Suffixing an operator with a backtick `` ` `` will cause some invalid tokens
+    to become valid and treated as "verbatim" operators. In that case, the mangled
+    representation includes this bit of metadata.
+
     Reasons for failure include:
 
     * Disallowed token types (`$2$` is invalid, `$.$` is valid)
@@ -129,6 +145,8 @@ def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
     """
     if not toks:
         return None
+
+    is_verbatim = False
 
     if 1 <= len(toks) <= 2 and all(
         tokens.is_keyword_operator_token(tok) for tok in toks
@@ -140,39 +158,54 @@ def mangle_operator_string(toks: Sequence[TokenInfo], nonce: str) -> str | None:
     else:
         prev = None
         operator: list[str] = []
-        for tok in toks:
+        is_verbatim = toks[-1].string == "`"
+        for tok in toks[:-1] if is_verbatim else toks:
             if not tokens.is_custom_operator_token(tok) or (
                 prev is not None and not tokens.is_adjacent(prev, tok)
             ):
                 return None
             operator.append(tok.string)
             prev = tok
+        if is_verbatim:
+            if prev is not None and not tokens.is_adjacent(prev, toks[-1]):
+                return None
 
         op_string = "".join(operator)
-        if is_disallowed_operator(op_string):
+        if not is_verbatim and is_disallowed_operator(op_string):
             return None
 
-    return f"__operator_{nonce}_{''.join(f'{ord(c):x}' for c in op_string)}"
+    suffix = f"_{nonce}_{''.join(f'{ord(c):x}' for c in op_string)}"
+    if is_verbatim:
+        return f"__operator_verbatim{suffix}"
+    else:
+        return f"__operator{suffix}"
 
 
-def demangle_operator_string(s: str, nonce: str) -> str | None:
+def demangle_operator_string(s: str, nonce: str) -> tuple[str, bool] | None:
     """Returns the operator string which generated `s`, or None if invalid.
 
     Note: This does no validation on hex pairs, so may yield characters outside
     the printable ASCII range, with e.g. `operator_{nonce}_ffff` as input.
     This is considered an implementation detail and is subject to change in the future.
     """
-    prefix = f"__operator_{nonce}_"
-    if not s.startswith(prefix):
-        return
-
-    hex = s.removeprefix(prefix)
+    if s.startswith(f"__operator_{nonce}_"):
+        hex = s.removeprefix(f"__operator_{nonce}_")
+        is_verbatim = False
+    else:
+        if s.startswith(f"__operator_verbatim_{nonce}_"):
+            hex = s.removeprefix(f"__operator_verbatim_{nonce}_")
+            is_verbatim = True
+        else:
+            return
 
     try:
-        return "".join(
-            # pairwise hex digits
-            chr(int(hex[i : i + 2], base=16))
-            for i in range(0, len(hex), 2)
+        return (
+            "".join(
+                # pairwise hex digits
+                chr(int(hex[i : i + 2], base=16))
+                for i in range(0, len(hex), 2)
+            ),
+            is_verbatim,
         )
     except ValueError:  # invalid hex
         return
@@ -287,6 +320,26 @@ class Custom(OperatorBase):
 
 
 @dataclass
+class Verbatim(Custom):
+    def generate(self, left: ast.expr, right: ast.expr) -> ast.expr:
+        """Generates an *expression* of the form
+        ```
+        __operator__(__name__, op)(left, right)
+        ```
+        given values of `op`, `left` and `right`.
+        """
+        return ast.Call(
+            func=generate_operator_object(self.op, verbatim=True),
+            args=[left, right],
+            keywords=[],
+            lineno=left.lineno,
+            col_offset=left.col_offset,
+            end_lineno=right.end_lineno,
+            end_col_offset=right.end_col_offset,
+        )
+
+
+@dataclass
 class Inplace(OperatorBase):
     op: str
 
@@ -376,6 +429,7 @@ def collect_operator_tokens_inplace(
         # This also catches in-place operators
         current = toks[i]
         operator = [current]
+        is_verbatim = False
         if 0 < i < len(toks) - 1 and tokens.is_custom_operator_token(current):
             # slurp the next token while we can
             while i + len(operator) + 1 < len(toks):
@@ -385,13 +439,19 @@ def collect_operator_tokens_inplace(
                 ):
                     operator.append(next)
                     current = next
+                elif next.string == "`" and tokens.is_adjacent(current, next):
+                    operator.append(next)
+                    is_verbatim = True
+                    break
                 else:
                     break
 
-            op_string = "".join(tok.string for tok in operator)
-            if not is_disallowed_operator(op_string) and not is_builtin_with_kind(
-                op_string, OperatorKind.Symbolic
-            ):
+            op_string = "".join(
+                tok.string for tok in (operator[:-1] if is_verbatim else operator)
+            )
+            if (
+                is_verbatim or not is_disallowed_operator(op_string)
+            ) and not is_builtin_with_kind(op_string, OperatorKind.Symbolic):
 
                 tokens.remove_inplace(toks, i, i + len(operator))
                 left_col = toks[i - 1].end[1]
@@ -412,7 +472,9 @@ def collect_operator_tokens_inplace(
                 )
 
                 kind = (
-                    Inplace
+                    Verbatim
+                    if is_verbatim
+                    else Inplace
                     if is_builtin_with_kind(op_string, OperatorKind.Inplace)
                     else Custom
                 )
@@ -484,11 +546,12 @@ class HoopyTransformer(ast.NodeTransformer):
         stmts = node.body
         # this evaluates to 0 or 1 depending on if there's a module docstring
         offset = 0
-        match stmts[0]:
-            case ast.Expr(value=ast.Constant(value=str())):
-                offset += 1
-            case _:
-                pass
+        if stmts:
+            match stmts[0]:
+                case ast.Expr(value=ast.Constant(value=str())):
+                    offset += 1
+                case _:
+                    pass
 
         # skip past every __future__ import
         while offset < len(stmts):
@@ -506,14 +569,15 @@ class HoopyTransformer(ast.NodeTransformer):
         prev = 0
         nodes: list[ast.stmt] = []
         for i, alias in enumerate(node.names):
-            demangled = demangle_operator_string(alias.name, self.operator_nonce)
-            if demangled is not None:
+            demangle_result = demangle_operator_string(alias.name, self.operator_nonce)
+            if demangle_result is not None:
+                demangled, verbatim = demangle_result
                 if prev < i:
                     # TODO: Make the spans tidier for better reporting
                     clone = copy.deepcopy(node)
                     clone.names = clone.names[prev:i]
                     nodes.append(clone)
-                nodes.append(generate_import(node, demangled))
+                nodes.append(generate_import(node, demangled, verbatim=verbatim))
                 prev = i + 1
         if prev != len(node.names):
             clone = copy.deepcopy(node)
@@ -526,8 +590,11 @@ class HoopyTransformer(ast.NodeTransformer):
         Returns the spans of the operator, if it has been registered. Else, None.
         """
         span = Span(
-            (left.end_lineno or 0, left.end_col_offset or 0),
-            (right.lineno or 0, right.col_offset or 0),
+            (
+                getattr(left, "end_lineno", 0) or 0,
+                getattr(left, "end_col_offset", 0) or 0,
+            ),
+            (getattr(right, "lineno", 0) or 0, getattr(right, "col_offset", 0) or 0),
         )
         if span in self.custom_spans:
             return span
@@ -665,33 +732,37 @@ class HoopyTransformer(ast.NodeTransformer):
         match demangle_operator_string(node.name, self.operator_nonce):
             case None:
                 return node
-            case op:
-                return generate_operator_definition(op, node, asynchronous=False)
+            case (op, verbatim):
+                return generate_operator_definition(
+                    op, node, asynchronous=False, verbatim=verbatim
+                )
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
         node = self.generic_visit(node)
         match demangle_operator_string(node.name, self.operator_nonce):
             case None:
                 return node
-            case op:
-                return generate_operator_definition(op, node, asynchronous=True)
+            case (op, verbatim):
+                return generate_operator_definition(
+                    op, node, asynchronous=True, verbatim=verbatim
+                )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
         node = self.generic_visit(node)
         match demangle_operator_string(node.name, self.operator_nonce):
             case None:
                 return node
-            case op:
-                return generate_operator_class(op, node)
+            case (op, verbatim):
+                return generate_operator_class(op, node, verbatim=verbatim)
 
     def visit_Name(self, node: ast.Name) -> Any:
         match demangle_operator_string(node.id, self.operator_nonce):
             case None:
                 return node
-            case op:
+            case (op, verbatim):
                 match node.ctx:
                     case ast.Load():
-                        return generate_operator_object(op)
+                        return generate_operator_object(op, verbatim=verbatim)
                     case _:
                         return node
 
