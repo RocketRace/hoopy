@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "hoopy"
-version = "1.1.0"
+version = "1.1.1"
 description = ""
-authors = ["Olivia Palmu <oliviaspalmu@gmail.com>"]
+authors = ["Olivia Palmu <hiemankaranteenissa@proton.me>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
